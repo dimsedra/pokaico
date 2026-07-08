@@ -63,9 +63,9 @@ describe("cosineSimilarity", () => {
   });
 
   it("throws descriptive error for severely mismatched dimensions", () => {
-    const a = new Float32Array(768);
+    const a = new Float32Array(384);
     const b = new Float32Array(1);
-    expect(() => cosineSimilarity(a, b)).toThrow(/768 vs 1/);
+    expect(() => cosineSimilarity(a, b)).toThrow(/384 vs 1/);
   });
 });
 

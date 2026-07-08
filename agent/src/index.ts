@@ -2,13 +2,18 @@
 // Spawned by Tauri shell, communicates via IPC
 
 import { createServer } from "node:http";
+import { createPythonEmbeddingModel } from "./embeddings/model";
+import type { EmbeddingModel } from "./embeddings/model";
+
+export let embeddingModel: EmbeddingModel | null = null;
 
 const PORT = parseInt(process.env.POKAICO_AGENT_PORT || "3121", 10);
 
 const server = createServer((req, res) => {
   if (req.method === "GET" && req.url === "/health") {
+    const modelReady = embeddingModel !== null;
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", version: "0.0.0" }));
+    res.end(JSON.stringify({ status: "ok", version: "0.0.0", modelReady }));
     return;
   }
 
@@ -19,3 +24,10 @@ const server = createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`[pokaico-agent] listening on :${PORT}`);
 });
+
+try {
+  embeddingModel = createPythonEmbeddingModel();
+  console.log("[pokaico-agent] embedding model loading in background...");
+} catch (err) {
+  console.error("[pokaico-agent] failed to start embedding model:", err);
+}

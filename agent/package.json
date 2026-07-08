@@ -7,7 +7,11 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:int": "cross-env INTEGRATION=true vitest run tests/embeddings.int.test.ts",
+    "test:all": "vitest run && cross-env INTEGRATION=true vitest run tests/embeddings.int.test.ts",
+    "setup:python": "node -e \"const{execSync:e}=require('child_process');const w=process.platform==='win32';e('cd python && python -m venv .venv',{shell:true});e('cd python && '+(w?'.venv\\\\Scripts\\\\pip':'.venv/bin/pip')+' install -r requirements.txt',{shell:true})\"",
+    "download:model": "node -e \"const{execSync:e}=require('child_process');const w=process.platform==='win32';e('cd python && '+(w?'.venv\\\\Scripts\\\\python':'.venv/bin/python')+' download_model.py',{shell:true})\""
   },
   "dependencies": {
     "@opencode-ai/models": "^0.0.6",
@@ -15,12 +19,12 @@
     "ai": "^7.0.18",
     "better-sqlite3": "^12.11.1",
     "mastra": "^1.18.2",
-    "onnxruntime-node": "^1.27.0",
     "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.3",
+    "cross-env": "^10.1.0",
     "tsx": "^4.19.4",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"

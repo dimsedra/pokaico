@@ -43,6 +43,6 @@ export const SCHEMA_SQL = [
   )`,
 
   `CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vec USING vec0(
-    embedding float[768]
+    embedding float[384]
   )`,
 ];

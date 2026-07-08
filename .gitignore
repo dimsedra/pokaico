@@ -26,3 +26,4 @@ Thumbs.db
 # Agent
 agent/dist/
 agent/node_modules/
+agent/python/.venv/

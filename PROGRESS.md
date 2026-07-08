@@ -11,7 +11,7 @@
 
 - [x] Init Tauri 2 project with React/Vite/TypeScript frontend
 - [x] Init Node.js sidecar workspace (`agent/`) with separate package.json
-- [x] Install core deps: `better-sqlite3`, `sqlite-vec`, `mastra`, `ai`, `@opencode-ai/models`, `onnxruntime-node`, `@xberg-io/xberg`, `vitest`
+- [x] Install core deps: `better-sqlite3`, `sqlite-vec`, `mastra`, `ai`, `@opencode-ai/models`, `@xberg-io/xberg`, `vitest`
 - [x] Configure TypeScript (ES2022 modules for Mastra compat)
 - [x] Set up `.gitignore`, `.editorconfig`, `.gitattributes`
 - [x] Git init → initial commit
@@ -34,13 +34,15 @@
 
 ## Phase 2: Embedding Service [✅]
 
-**Scope:** EmbeddingGemma-300M ONNX wrapper, similarity computation, sqlite-vec + FTS5 integration.
+**Scope:** E5-small Python sidecar (sentence-transformers), similarity computation, sqlite-vec + FTS5 integration.
 
-- [x] ONNX runtime wrapper: load model, generate embeddings, batch support, error handling
-- [x] Cosine similarity: compute between vectors, threshold-based matching
+- [x] Python sidecar: embed.py with sentence-transformers, stdin/stdout JSON loop, model loaded on startup
+- [x] `model.ts`: Python subprocess manager (spawn, embed, embedBatch, close)
+- [x] `service.ts`: integrate vec0 INSERT, embed API with `query:`/`passage:` prefix, hybrid search (FTS5 + vector)
+- [x] Cosine similarity: compute between vectors, threshold-based matching (384-dim)
 - [x] sqlite-vec: store/query/delete embedding vectors, ANN search (via hybrid)
 - [x] FTS5: full-text search over topic content, BM25 ranking, hybrid search
-- [x] **Test:** Embedding dimension correctness, known-vector similarity scores, sqlite-vec store/query, FTS5 search relevance — 32 tests (similarity 14 + model 6 + service 5 + search 7)
+- [x] **Test:** 96 passing tests across 7 files — embedding dimension (384), known-vector similarity, vec0 store/query, FTS5 search relevance, hybrid search, fallback
 - [x] **Deliverable:** Embedding service that generates, stores, and queries vectors + full-text
 
 ---

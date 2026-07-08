@@ -60,24 +60,24 @@ export function hybridSearch(
   try {
     const vecResults = db
       .prepare(
-        `SELECT c.topic_id, c.content, c.source_path, v.distance
+        `SELECT c.rowid, c.topic_id, c.content, c.source_path, v.distance
          FROM chunk_vec AS v
          JOIN chunk_fts AS c ON c.rowid = v.rowid
          WHERE v.embedding MATCH ?
          ORDER BY v.distance
          LIMIT ?`,
       )
-      .all(embedding instanceof Buffer ? embedding : Buffer.from(embedding.buffer), limit * 2) as { topic_id: string; content: string; source_path: string; distance: number }[];
+      .all(embedding instanceof Buffer ? embedding : Buffer.from(embedding.buffer), limit * 2) as { rowid: number; topic_id: string; content: string; source_path: string; distance: number }[];
 
     for (const r of vecResults) {
-      const id = `${r.topic_id}::${r.content.slice(0, 40)}`;
-      seen.set(id, {
+      const vectorScore = Math.max(0, 1 - r.distance);
+      seen.set(`${r.topic_id}::${r.rowid}`, {
         topicId: r.topic_id,
         content: r.content,
         sourcePath: r.source_path,
-        vectorScore: 1 - r.distance,
+        vectorScore,
         ftsScore: 0,
-        combinedScore: (1 - r.distance) * vectorWeight,
+        combinedScore: vectorScore * vectorWeight,
       });
     }
   } catch {
@@ -88,16 +88,16 @@ export function hybridSearch(
   try {
     const ftsResults = db
       .prepare(
-        `SELECT topic_id, content, source_path, rank
+        `SELECT rowid, topic_id, content, source_path, rank
          FROM chunk_fts
          WHERE chunk_fts MATCH ?
          ORDER BY rank
          LIMIT ?`,
       )
-      .all(ftsQuery, limit * 2) as { topic_id: string; content: string; source_path: string; rank: number }[];
+      .all(ftsQuery, limit * 2) as { rowid: number; topic_id: string; content: string; source_path: string; rank: number }[];
 
     for (const r of ftsResults) {
-      const id = `${r.topic_id}::${r.content.slice(0, 40)}`;
+      const id = `${r.topic_id}::${r.rowid}`;
       const existing = seen.get(id);
       const ftsScore = 1 / (1 + Math.abs(r.rank));
       if (existing) {

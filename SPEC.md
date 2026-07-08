@@ -12,7 +12,7 @@ Pixel art aesthetic, cozy style. Build start · v0.1.
 | Language / runtime | **TypeScript / Node.js**, single language end-to-end | Frontend is already JS/TS under Tauri; keeping the agent backend in TS means one ecosystem, one package manager, and native compatibility with models.dev's own SDK. |
 | Agent framework | **Mastra** | TS-native agent framework (not a Python port). Ships agents, tools, workflows, memory hooks, evals, and MCP support in one package — you'll only use the "agent + tools + workflow" primitives in v0.1 and grow into workflows/MCP for v0.2 agentic features. |
 | Model provider layer | **Vercel AI SDK** (`ai` package) + **models.dev** catalog (`@opencode-ai/models` or its raw JSON/TOML feed) | Mastra is built on top of the AI SDK, so this isn't an extra dependency — models.dev exists specifically to feed AI-SDK-shaped provider configs, so you get "any provider, any model" without hand-maintaining a model-name enum. |
-| Embedding model | **EmbeddingGemma-300M** (ONNX build) | 300M params, 100+ languages, ~200MB quantized, Matryoshka truncation (768→128 dims) if you want smaller vectors, runs on CPU via `onnxruntime-node` — no GPU dependency for a v0.1 desktop app. |
+| Embedding model | **E5-small** (Python sidecar via `sentence-transformers`) | 334M params, 100+ languages, 384-dim, retrieval-optimized (asymmetric `query:`/`passage:` prefix), runs on CPU via Python sidecar — ~150MB RAM, drops `onnxruntime-node` dependency. |
 | Backend database | **SQLite** (via `better-sqlite3` or `libsql`) + **sqlite-vec** extension + **FTS5** | One embedded file, zero server, hybrid (vector + keyword) search in one engine. Crucially: this DB is a *disposable index*, not a source of truth — the markdown files are — so simplicity and rebuildability beat raw vector-search ceiling. |
 | Memory system | **Pokaico** (custom, filesystem-based, as you've specified) | No change — this is your differentiator, not a place to bolt on a generic framework. |
 | Document extraction | **Xberg** (Rust core, `@xberg-io/xberg`) | 96 formats (PDF, DOCX, XLSX, PPTX, HTML, CSV, images, email, code), auto-detect MIME, auto-routing. OCR built-in via multiple backends (Candle GLM-OCR default). One dependency replaces pdf-oxide + office-oxide + custom pipeline. |
@@ -73,6 +73,23 @@ You can implement this yourself as a Mastra tool (`readSkill(name)`) in an after
 `<dataDir>` is the user's chosen Pokaico data directory (e.g. `~/Documents/Pokaico`). The project repo and user data are separate trees — the app asks the user where to store their data on first launch.
 
 Key principle carried through: **the SQLite DB can be deleted and rebuilt by re-walking and re-embedding `<dataDir>/memory/`.** It never holds anything that isn't derivable from the markdown tree. This gives you a clean recovery story and means schema migrations are low-stakes.
+
+### Architecture note: embedding runtime
+
+**Current (v0.1):** Embedding runs via a Python sidecar process (`agent/python/embed.py`) using `sentence-transformers` with `intfloat/multilingual-e5-small`. The sidecar is spawned at startup and communicates via stdin/stdout JSON lines. This is a pragmatic choice for development — Python handles tokenization + pooling + normalization in one call, and the same Python stack could be reused for future deep research / search / agent tools.
+
+**Production consideration:** The Python sidecar creates deployment friction — users need Python installed, model download is ~120MB (cached in `~/.cache/huggingface/`), and bundling requires PyInstaller or similar. Future alternatives:
+
+| Alternative | Trade-off |
+|---|---|
+| **transformers.js** (`@huggingface/transformers`) | Pure JS ONNX inference — no Python dep, no sidecar, same E5-small model available (`Xenova/multilingual-e5-small`). Eliminates the entire Python dependency. Feasibility confirmed: transformers.js is mature (Xenova ecosystem) and covers most SentenceTransformer models. |
+| **PyInstaller bundle** | Compile Python + model into standalone `.exe` — transparent to user but adds ~150MB to binary. |
+
+**Decision:** Python sidecar for v0.1 development. Revisit for production — if Python-side features (deep research, agent tools) don't materialize, transformers.js would simplify the stack significantly.
+
+### User environment assumption
+
+Pokaico assumes the user's machine has **zero programming tools** installed — no Python, Node.js, Git, compilers, or package managers. The developer is responsible for preparing and bundling every dependency (via PyInstaller, embedded runtimes, or Tauri resources). Downloads during first launch (model files, engine binaries) are by design, not a bug — this is the standard pattern for desktop ML applications (LM Studio, Ollama). Installer size and first-run wait time are acceptable trade-offs for zero-assumption portability.
 
 ---
 
@@ -147,7 +164,7 @@ CREATE TABLE resources (
 
 -- Vector + lexical index (sqlite-vec virtual table + FTS5), one row per chunk
 CREATE VIRTUAL TABLE chunk_fts USING fts5(content, topic_id UNINDEXED, source_path UNINDEXED);
-CREATE VIRTUAL TABLE chunk_vec USING vec0(embedding float[768]); -- or 256 via Matryoshka truncation
+CREATE VIRTUAL TABLE chunk_vec USING vec0(embedding float[384]);
 
 CREATE TABLE session_pointers (
   session_id TEXT PRIMARY KEY,
@@ -303,7 +320,7 @@ pokai/
 │   │   ├── mastra/            # Agent + tool definitions
 │   │   ├── memory/            # Pipeline, extraction, CRUD logic
 │   │   ├── db/                # SQLite schema, migrations, query helpers
-│   │   └── embeddings/        # EmbeddingGemma ONNX wrapper
+│   │   └── embeddings/        # E5-small Python sidecar wrapper
 │   └── package.json
 └── ...config files
 

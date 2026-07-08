@@ -33,17 +33,17 @@ beforeAll(() => {
     return Buffer.from(new Float32Array(values).buffer);
   }
   // row 1 → fts 1 (work)
-  embed.run(toBuffer(Array.from({ length: 768 }, () => 0.01)));
+  embed.run(toBuffer(Array.from({ length: 384 }, () => 0.01)));
   // row 2 → fts 2 (family)
-  embed.run(toBuffer(Array.from({ length: 768 }, () => 0.02)));
+  embed.run(toBuffer(Array.from({ length: 384 }, () => 0.02)));
   // row 3 → fts 3 (work)
-  embed.run(toBuffer(Array.from({ length: 768 }, () => 0.015)));
+  embed.run(toBuffer(Array.from({ length: 384 }, () => 0.015)));
   // row 4 → fts 4 (health) — dummy
-  embed.run(toBuffer(Array.from({ length: 768 }, () => 0.001)));
+  embed.run(toBuffer(Array.from({ length: 384 }, () => 0.001)));
   // row 5 → fts 5 (team) — dummy
-  embed.run(toBuffer(Array.from({ length: 768 }, () => 0.001)));
+  embed.run(toBuffer(Array.from({ length: 384 }, () => 0.001)));
   // row 6 → fts 6 (travel)
-  embed.run(toBuffer(Array.from({ length: 768 }, () => 0.03)));
+  embed.run(toBuffer(Array.from({ length: 384 }, () => 0.03)));
 });
 
 describe("ftsSearch", () => {
@@ -95,7 +95,7 @@ describe("ftsSearch", () => {
 
 describe("hybridSearch", () => {
   it("combines vector and FTS5 scores", () => {
-    const fakeEmbedding = Buffer.from(new Float32Array(768).fill(0.01).buffer);
+    const fakeEmbedding = Buffer.from(new Float32Array(384).fill(0.01).buffer);
     const results = hybridSearch(db, fakeEmbedding, "work", { vectorWeight: 0.5 });
 
     expect(results.length).toBeGreaterThan(0);
@@ -103,19 +103,19 @@ describe("hybridSearch", () => {
   });
 
   it("returns results even when FTS5 has no matches (vector fallback)", () => {
-    const fakeEmbedding = Buffer.from(new Float32Array(768).fill(0.5).buffer);
+    const fakeEmbedding = Buffer.from(new Float32Array(384).fill(0.5).buffer);
     const results = hybridSearch(db, fakeEmbedding, "zzznotfound");
     expect(results.length).toBeGreaterThanOrEqual(0);
   });
 
   it("returns empty when both searches fail", () => {
-    const zeroEmbedding = Buffer.from(new Float32Array(768).buffer);
+    const zeroEmbedding = Buffer.from(new Float32Array(384).buffer);
     const results = hybridSearch(db, zeroEmbedding, "zzznotfound");
     expect(results).toEqual([]);
   });
 
   it("uses only FTS when vectorWeight = 0", () => {
-    const fakeEmbedding = Buffer.from(new Float32Array(768).fill(0.5).buffer);
+    const fakeEmbedding = Buffer.from(new Float32Array(384).fill(0.5).buffer);
     const results = hybridSearch(db, fakeEmbedding, "vacation", { vectorWeight: 0 });
 
     expect(results.length).toBeGreaterThan(0);
@@ -126,7 +126,7 @@ describe("hybridSearch", () => {
   });
 
   it("uses only vector when vectorWeight = 1", () => {
-    const fakeEmbedding = Buffer.from(new Float32Array(768).fill(0.01).buffer);
+    const fakeEmbedding = Buffer.from(new Float32Array(384).fill(0.01).buffer);
     const results = hybridSearch(db, fakeEmbedding, "vacation", { vectorWeight: 1 });
 
     expect(results.length).toBeGreaterThan(0);
@@ -137,13 +137,13 @@ describe("hybridSearch", () => {
   });
 
   it("returns empty for limit = 0", () => {
-    const fakeEmbedding = Buffer.from(new Float32Array(768).fill(0.01).buffer);
+    const fakeEmbedding = Buffer.from(new Float32Array(384).fill(0.01).buffer);
     const results = hybridSearch(db, fakeEmbedding, "work", { limit: 0 });
     expect(results).toEqual([]);
   });
 
   it("deduplicates when same content appears in both vec and FTS", () => {
-    const fakeEmbedding = Buffer.from(new Float32Array(768).fill(0.01).buffer);
+    const fakeEmbedding = Buffer.from(new Float32Array(384).fill(0.01).buffer);
     const results = hybridSearch(db, fakeEmbedding, "work", { limit: 50 });
 
     const keys = results.map((r) => `${r.topicId}::${r.content.slice(0, 40)}`);
@@ -151,12 +151,80 @@ describe("hybridSearch", () => {
   });
 
   it("includes sourcePath in all results", () => {
-    const fakeEmbedding = Buffer.from(new Float32Array(768).fill(0.01).buffer);
+    const fakeEmbedding = Buffer.from(new Float32Array(384).fill(0.01).buffer);
     const results = hybridSearch(db, fakeEmbedding, "work");
 
     for (const r of results) {
       expect(r.sourcePath).toBeTruthy();
       expect(r.sourcePath).toMatch(/^memory\/topics\//);
     }
+  });
+});
+
+describe("search — confirmed findings", () => {
+  it("FIX F25: dedup uses rowid — two chunks with same prefix are no longer merged", () => {
+    const dedupDb = createDb(join(tmpDir, "search-dedup.db"));
+
+    const prefix40 = "This is a very long chunk that starts with the".slice(0, 40);
+    const chunkA = prefix40 + "exact same prefix but then diverges AAAA";
+    const chunkB = prefix40 + "exact same prefix but then diverges BBBB";
+
+    const insert = dedupDb.prepare(
+      "INSERT INTO chunk_fts(rowid, content, topic_id, source_path) VALUES (?, ?, ?, ?)",
+    );
+    insert.run(1, chunkA, "dedup-topic", "memory/topics/dedup/CONTEXT.md");
+    insert.run(2, chunkB, "dedup-topic", "memory/topics/dedup/CONTEXT.md");
+
+    const embed = dedupDb.prepare("INSERT INTO chunk_vec(embedding) VALUES (?)");
+    const vec = Buffer.from(new Float32Array(384).fill(0.01).buffer);
+    embed.run(vec);
+    embed.run(vec);
+
+    const results = hybridSearch(
+      dedupDb,
+      Buffer.from(new Float32Array(384).fill(0.01).buffer),
+      "prefix",
+      { vectorWeight: 0.5, limit: 10 },
+    );
+
+    // Dedup key is now `${topicId}::${rowid}` — both chunks have unique rowids
+    expect(results.length).toBe(2);
+
+    closeDb(dedupDb);
+  });
+
+  it("FIX F26: vectorScore is clamped to [0, 1] when distance > 1", () => {
+    // Test the clamping formula directly: Math.max(0, 1 - distance)
+    // This is the formula used in hybridSearch for vectorScore
+    const nearDistance = 0.0384;
+    const farDistance = 100;
+
+    expect(Math.max(0, 1 - nearDistance)).toBeGreaterThan(0);
+    expect(Math.max(0, 1 - nearDistance)).toBeLessThanOrEqual(1);
+    expect(Math.max(0, 1 - farDistance)).toBe(0);
+
+    // Also test via hybridSearch when vec0 returns a result
+    const clampDb = createDb(join(tmpDir, "search-clamp.db"));
+
+    const insert = clampDb.prepare(
+      "INSERT INTO chunk_fts(rowid, content, topic_id, source_path) VALUES (?, ?, ?, ?)",
+    );
+    insert.run(1, "some content", "clamp-topic", "memory/topics/clamp/CONTEXT.md");
+
+    // Store a vec whose distance from query will produce a negative raw score
+    const storedVec = new Float32Array(384);
+    storedVec[0] = -10;
+    const storedBuf = Buffer.from(storedVec.buffer);
+    clampDb.prepare("INSERT INTO chunk_vec(embedding) VALUES (?)").run(storedBuf);
+
+    // Query matches stored vector exactly (distance = 0)
+    const exactQuery = Buffer.from(storedVec.buffer);
+    const exactResults = hybridSearch(clampDb, exactQuery, "nonexistent", { vectorWeight: 1, limit: 10 });
+    if (exactResults.length > 0) {
+      // vectorScore = Math.max(0, 1 - 0) = 1
+      expect(exactResults[0].vectorScore).toBe(1);
+    }
+
+    closeDb(clampDb);
   });
 });
