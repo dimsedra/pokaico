@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -31,7 +31,7 @@ describe("appendTurn", () => {
     );
     appendTurn(path, turn);
 
-    const content = require("node:fs").readFileSync(path, "utf-8");
+    const content = readFileSync(path, "utf-8");
     expect(content).toContain("## [14:02:11] User");
     expect(content).toContain("Hello Pokai!");
   });
@@ -49,7 +49,7 @@ describe("appendTurn", () => {
       content: "Hi there! How can I help?",
     });
 
-    const content = require("node:fs").readFileSync(path, "utf-8");
+    const content = readFileSync(path, "utf-8");
     expect(content).toContain("## [14:00:01] Pokai");
     expect(content).toContain("Hi there! How can I help?");
   });
@@ -65,7 +65,7 @@ describe("appendTurn", () => {
     appendTurn(path, { timestamp: "14:02:00", role: "pokai", content: "Reply" });
     appendTurn(path, { timestamp: "14:03:00", role: "user", content: "Second" });
 
-    const content = require("node:fs").readFileSync(path, "utf-8");
+    const content = readFileSync(path, "utf-8");
     expect(content.match(/## \[\d{2}:\d{2}:\d{2}\]/g)).toHaveLength(3);
   });
 });
@@ -192,5 +192,146 @@ describe("listSessions", () => {
   it("returns empty array for empty directory", () => {
     const emptyDir = mkdtempSync(join(tmpdir(), "pokaico-empty-"));
     expect(listSessions(emptyDir)).toEqual([]);
+  });
+});
+
+describe("edge cases", () => {
+  it("parses tool turns with tool name suffix", () => {
+    const path = join(tmpDir, "tool-turn.md");
+    writeFileSync(
+      path,
+      [
+        "---",
+        "session_id: tool-test",
+        "started_at: 2026-07-08T14:00:00+07:00",
+        "model: t",
+        "extracted: false",
+        "---",
+        "",
+        "## [14:03:02] Tool: search_topics",
+        '{"query": "work"}',
+      ].join("\n"),
+    );
+
+    const session = readSession(path);
+    expect(session.turns).toHaveLength(1);
+    expect(session.turns[0].role).toBe("tool");
+  });
+
+  it("handles CRLF line endings", () => {
+    const path = join(tmpDir, "crlf-test.md");
+    writeFileSync(
+      path,
+      [
+        "---",
+        "session_id: crlf",
+        "started_at: 2026-07-08T14:00:00+07:00",
+        "model: t",
+        "extracted: false",
+        "---",
+        "",
+        "## [14:00:00] User",
+        "Hello",
+      ].join("\r\n"),
+    );
+
+    const session = readSession(path);
+    expect(session.turns).toHaveLength(1);
+    expect(session.turns[0].content).toBe("Hello");
+  });
+
+  it("handles YAML dashes in turn content", () => {
+    const path = join(tmpDir, "yaml-dash.md");
+    writeFileSync(
+      path,
+      [
+        "---",
+        "session_id: yaml",
+        "started_at: 2026-07-08T14:00:00+07:00",
+        "model: t",
+        "extracted: false",
+        "---",
+        "",
+        "## [14:00:00] User",
+        "Here is a list:",
+        "- item one",
+        "- item two",
+        "---",
+        "horizontal rule in markdown",
+      ].join("\n"),
+    );
+
+    const session = readSession(path);
+    expect(session.turns).toHaveLength(1);
+    expect(session.turns[0].content).toContain("- item one");
+    expect(session.turns[0].content).toContain("horizontal rule");
+  });
+
+  it("returns undefined sessionId when frontmatter field is missing", () => {
+    const path = join(tmpDir, "missing-fm.md");
+    writeFileSync(
+      path,
+      [
+        "---",
+        "model: t",
+        "extracted: true",
+        "---",
+      ].join("\n"),
+    );
+
+    const session = readSession(path);
+    expect(session.sessionId).toBeUndefined();
+    expect(session.model).toBe("t");
+    expect(session.extracted).toBe(true);
+  });
+
+  it("skips non-.md files in listSessions", () => {
+    const mixedDir = mkdtempSync(join(tmpdir(), "pokaico-mixed-"));
+    writeFileSync(
+      join(mixedDir, "session.md"),
+      [
+        "---",
+        "session_id: valid",
+        "started_at: 2026-07-08T14:00:00+07:00",
+        "model: t",
+        "extracted: false",
+        "---",
+      ].join("\n"),
+    );
+    writeFileSync(join(mixedDir, "notes.txt"), "plain text");
+    writeFileSync(join(mixedDir, "data.json"), "{}");
+
+    const sessions = listSessions(mixedDir);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].sessionId).toBe("valid");
+  });
+
+  it("lists duplicate sessionIds separately", () => {
+    const dupDir = mkdtempSync(join(tmpdir(), "pokaico-dup-"));
+    writeFileSync(
+      join(dupDir, "a.md"),
+      [
+        "---",
+        "session_id: same-id",
+        "started_at: 2026-07-08T10:00:00+07:00",
+        "model: m1",
+        "extracted: false",
+        "---",
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(dupDir, "b.md"),
+      [
+        "---",
+        "session_id: same-id",
+        "started_at: 2026-07-08T11:00:00+07:00",
+        "model: m2",
+        "extracted: false",
+        "---",
+      ].join("\n"),
+    );
+
+    const sessions = listSessions(dupDir);
+    expect(sessions).toHaveLength(2);
   });
 });

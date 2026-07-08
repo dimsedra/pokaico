@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, readdirSync, appendFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, extname } from "node:path";
 
 export type JournalTurn = {
   timestamp: string;
@@ -41,21 +41,28 @@ function roleLabel(role: JournalTurn["role"]): string {
 }
 
 function parseRole(label: string): JournalTurn["role"] {
-  if (label === "User") return "user";
-  if (label === "Pokai") return "pokai";
+  // Label can be "User", "Pokai", or "Tool: tool_name"
+  const base = label.split(":")[0].trim();
+  if (base === "User") return "user";
+  if (base === "Pokai") return "pokai";
   return "tool";
 }
 
-const TURN_HEADER_RE = /^## \[(\d{2}:\d{2}:\d{2})\] (\w+)$/;
+const TURN_HEADER_RE = /^## \[(\d{2}:\d{2}:\d{2})\] (\w[\w ]*)(?:: .*)?$/;
 
 export function appendTurn(path: string, turn: JournalTurn): void {
   const block = `\n## [${turn.timestamp}] ${roleLabel(turn.role)}\n${turn.content}`;
   appendFileSync(path, block, "utf-8");
 }
 
+function normalizeEol(raw: string): string {
+  return raw.replace(/\r\n/g, "\n");
+}
+
 export function readSession(path: string): JournalSession {
   const raw = readFileSync(path, "utf-8");
-  const lines = raw.split("\n");
+  const normalized = normalizeEol(raw);
+  const lines = normalized.split("\n");
 
   if (lines.length < 2 || lines[0] !== "---") {
     throw new Error(`Invalid journal file: missing frontmatter in ${path}`);
@@ -115,7 +122,7 @@ export function listSessions(journalDir: string): SessionMeta[] {
 
   const sessions: SessionMeta[] = [];
   for (const entry of entries) {
-    if (!entry.endsWith(".md")) continue;
+    if (extname(entry) !== ".md") continue;
     try {
       const session = readSession(join(journalDir, entry));
       sessions.push({

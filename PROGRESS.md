@@ -27,7 +27,7 @@
 - [x] SQLite schema: `sessions`, `topics`, `resources`, `edges`, `session_pointers`, FTS5 virtual table, sqlite-vec virtual table
 - [x] Journal module: write formatted `.md` (`journal/YYYY-MM-DD-<session>.md`), parse back to structured data
 - [x] Memory module: topic directory tree (`memory/topics/<slug>/CONTEXT.md`, `memory/INDEX.md`), resource companion `.md` management
-- [x] **Test:** DB creation, journal write/read roundtrip, memory dir creation matches expected structure — 27 tests
+- [x] **Test:** DB creation, journal write/read roundtrip, memory dir creation matches expected structure — 44 tests (+17 edge case: dir autocreate, FK, special chars, tool turns, CRLF, YAML dashes, missing frontmatter, non-.md files, spaces in slug, collision, stale INDEX, case sensitivity)
 - [x] **Deliverable:** Working data layer with journal + memory filesystem ops + DB schema
 
 ---
