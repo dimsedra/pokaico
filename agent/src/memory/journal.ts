@@ -29,6 +29,7 @@ function parseFrontmatter(lines: string[]): Record<string, string> {
     if (colonIdx === -1) continue;
     const key = line.slice(0, colonIdx).trim();
     const value = line.slice(colonIdx + 1).trim();
+    // Only take up to first colon for the key; keep everything after as value
     meta[key] = value;
   }
   return meta;
@@ -48,7 +49,7 @@ function parseRole(label: string): JournalTurn["role"] {
   return "tool";
 }
 
-const TURN_HEADER_RE = /^## \[(\d{2}:\d{2}:\d{2})\] (\w[\w ]*)(?:: .*)?$/;
+const TURN_HEADER_RE = /^## \[(\d{2}:\d{2}:\d{2})\] (User|Pokai|Tool)(?:: .*)?$/;
 
 export function appendTurn(path: string, turn: JournalTurn): void {
   const block = `\n## [${turn.timestamp}] ${roleLabel(turn.role)}\n${turn.content}`;

@@ -10,12 +10,25 @@ type SearchResult = {
   sourcePath: string;
 };
 
-function slugify(text: string): string {
-  return text
+function slugify(text: string, existingSlugs?: Set<string>): string {
+  let slug = text
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 60);
+
+  if (!slug) slug = "topic";
+
+  // Resolve collisions
+  if (existingSlugs && existingSlugs.has(slug)) {
+    let counter = 1;
+    while (existingSlugs.has(`${slug}-${counter}`)) {
+      counter++;
+    }
+    slug = `${slug}-${counter}`;
+  }
+
+  return slug;
 }
 
 function pickExistingTopic(
@@ -55,13 +68,18 @@ export async function extractTopics(
     ];
   }
 
-  // Create new topic
-  const topicId = slugify(summary.keyPoints[0] || summary.summary);
+  // Create new topic — guard against slug collision
+  const existingSlugs = new Set(existingTopics.map((t) => t.topicId));
+  const topicId = slugify(summary.keyPoints[0] || summary.summary, existingSlugs);
+  const points = summary.keyPoints.filter((k) => k.length > 0);
+  const pointsSection = points.length > 0
+    ? `\n\nKey points:\n${points.map((k) => `- ${k}`).join("\n")}`
+    : "";
   return [
     {
       topicId,
       action: "create",
-      content: `${summary.summary}\n\nKey points:\n${summary.keyPoints.map((k) => `- ${k}`).join("\n")}`,
+      content: `${summary.summary}${pointsSection}`,
     },
   ];
 }

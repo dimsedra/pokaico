@@ -16,8 +16,16 @@ export function createEmbeddingService(model: EmbeddingModel, db: PokaicoDb) {
   }
 
   async function indexTopic(topicId: string, content: string): Promise<void> {
+    if (!content.trim()) return;
+
     try {
       const sourcePath = `memory/topics/${topicId}/CONTEXT.md`;
+
+      // Dedup: skip if identical content already indexed for this topic
+      const existing = db.prepare(
+        "SELECT rowid FROM chunk_fts WHERE topic_id = ? AND content = ?",
+      ).get(topicId, content) as { rowid: number } | undefined;
+      if (existing) return;
 
       const embedding = await model.embed(`passage: ${content}`);
       const embeddingBuf = Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength);

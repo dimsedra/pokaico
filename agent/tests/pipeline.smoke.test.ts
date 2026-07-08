@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { google } from "@ai-sdk/google";
 import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
 import { processSession } from "../src/memory/pipeline";
-import { withTopicLock } from "../src/memory/mutex";
 import { extractTopics } from "../src/memory/extract";
 import type { TopicMeta } from "../src/memory/topics";
 
@@ -66,8 +65,7 @@ Small team of 4 people, very supportive. I've worked with them for 2 years so I 
       db,
       memoryDir,
       journalDir,
-      lock: withTopicLock,
-    });
+      });
 
     console.log("Summary:", result.summary?.summary);
     console.log("Key points:", result.summary?.keyPoints);

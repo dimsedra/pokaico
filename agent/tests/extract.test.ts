@@ -63,6 +63,21 @@ describe("extractTopics", () => {
     const creates = result.filter((c) => c.action === "create");
     const updates = result.filter((c) => c.action === "update");
     expect(updates[0].topicId).toBe("hobbies");
-    expect(creates).toHaveLength(0); // hobbies matched, no create needed
+    expect(creates).toHaveLength(0);
+  });
+
+  it("generates unique slug when collision exists", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const existingTopics: TopicMeta[] = [
+      { topicId: "hiking-is-a-hobby", summary: "", isFoundational: false, updatedAt: 0 },
+    ];
+    const summary2 = {
+      summary: "Hiking is fun",
+      keyPoints: ["Hiking is a hobby"],
+    };
+
+    const result = await extractTopics(summary2, existingTopics, searchSimilar);
+    expect(result[0].action).toBe("create");
+    expect(result[0].topicId).toBe("hiking-is-a-hobby-1");
   });
 });

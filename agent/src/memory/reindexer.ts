@@ -59,6 +59,5 @@ function readResourceContents(memoryDir: string, topicId: string): string[] {
 }
 
 function countTokens(text: string): number {
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  return Math.max(1, wordCount);
+  return Math.ceil(text.length / 4);
 }

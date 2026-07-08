@@ -44,7 +44,7 @@ describe("createPythonEmbeddingModel — fixes verified", () => {
     await new Promise((r) => setTimeout(r, 200));
     const embedPromise = model.embed("hello");
 
-    await expect(embedPromise).rejects.toThrow("timed out");
+    await expect(embedPromise).rejects.toThrow("timed out after");
     await model.close();
   }, 3000);
 });
