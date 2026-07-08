@@ -5,5 +5,9 @@ export default defineConfig({
     globals: true,
     include: ["tests/**/*.test.ts"],
     environment: "node",
+    env: {
+      GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY || "",
+      TEST_MODEL: process.env.TEST_MODEL || "",
+    },
   },
 });

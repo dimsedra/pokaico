@@ -11,7 +11,8 @@
     "test:int": "cross-env INTEGRATION=true vitest run tests/embeddings.int.test.ts",
     "test:all": "vitest run && cross-env INTEGRATION=true vitest run tests/embeddings.int.test.ts",
     "setup:python": "node -e \"const{execSync:e}=require('child_process');const w=process.platform==='win32';e('cd python && python -m venv .venv',{shell:true});e('cd python && '+(w?'.venv\\\\Scripts\\\\pip':'.venv/bin/pip')+' install -r requirements.txt',{shell:true})\"",
-    "download:model": "node -e \"const{execSync:e}=require('child_process');const w=process.platform==='win32';e('cd python && '+(w?'.venv\\\\Scripts\\\\python':'.venv/bin/python')+' download_model.py',{shell:true})\""
+    "download:model": "node -e \"const{execSync:e}=require('child_process');const w=process.platform==='win32';e('cd python && '+(w?'.venv\\\\Scripts\\\\python':'.venv/bin/python')+' download_model.py',{shell:true})\"",
+    "test:smoke": "cross-env-shell vitest run tests/pipeline.smoke.test.ts --reporter=verbose"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.10",
