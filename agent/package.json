@@ -1,0 +1,27 @@
+{
+  "name": "pokaico-agent",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@opencode-ai/models": "^0.0.6",
+    "@xberg-io/xberg": "^0.0.1",
+    "ai": "^7.0.18",
+    "better-sqlite3": "^12.11.1",
+    "mastra": "^1.18.2",
+    "onnxruntime-node": "^1.27.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

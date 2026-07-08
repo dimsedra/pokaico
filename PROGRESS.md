@@ -5,18 +5,18 @@
 
 ---
 
-## Phase 0: Foundation & Scaffolding [ ]
+## Phase 0: Foundation & Scaffolding [✅]
 
 **Scope:** Tauri 2 + React + Node sidecar skeleton, dep installation, monorepo structure, build verification.
 
-- [ ] Init Tauri 2 project with React/Vite/TypeScript frontend
-- [ ] Init Node.js sidecar workspace (`agent/`) with separate package.json
-- [ ] Install core deps: `better-sqlite3`, `sqlite-vec`, `mastra`, `ai`, `@opencode-ai/models`, `onnxruntime-node`, `@xberg-io/xberg`, `vitest`
-- [ ] Configure TypeScript (ES2022 modules for Mastra compat)
-- [ ] Set up `.gitignore`, `.editorconfig`, `.gitattributes`
-- [ ] Git init → initial commit
-- **Test:** Smoke — app compiles, sidecar starts, IPC channel works
-- **Deliverable:** Empty shell app with sidecar process communication verified
+- [x] Init Tauri 2 project with React/Vite/TypeScript frontend
+- [x] Init Node.js sidecar workspace (`agent/`) with separate package.json
+- [x] Install core deps: `better-sqlite3`, `sqlite-vec`, `mastra`, `ai`, `@opencode-ai/models`, `onnxruntime-node`, `@xberg-io/xberg`, `vitest`
+- [x] Configure TypeScript (ES2022 modules for Mastra compat)
+- [x] Set up `.gitignore`, `.editorconfig`, `.gitattributes`
+- [x] Git init → initial commit
+- [x] **Test:** Smoke — app compiles, sidecar starts, IPC channel works
+- [x] **Deliverable:** Empty shell app with sidecar process communication verified
 
 ---
 
