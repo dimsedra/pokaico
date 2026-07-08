@@ -1,0 +1,132 @@
+import { readFileSync, writeFileSync, readdirSync, appendFileSync } from "node:fs";
+import { join } from "node:path";
+
+export type JournalTurn = {
+  timestamp: string;
+  role: "user" | "pokai" | "tool";
+  content: string;
+};
+
+export type JournalSession = {
+  sessionId: string;
+  startedAt: string;
+  model: string;
+  extracted: boolean;
+  turns: JournalTurn[];
+};
+
+export type SessionMeta = {
+  sessionId: string;
+  startedAt: string;
+  model: string;
+  extracted: boolean;
+};
+
+function parseFrontmatter(lines: string[]): Record<string, string> {
+  const meta: Record<string, string> = {};
+  for (const line of lines) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const value = line.slice(colonIdx + 1).trim();
+    meta[key] = value;
+  }
+  return meta;
+}
+
+function roleLabel(role: JournalTurn["role"]): string {
+  if (role === "user") return "User";
+  if (role === "pokai") return "Pokai";
+  return "Tool";
+}
+
+function parseRole(label: string): JournalTurn["role"] {
+  if (label === "User") return "user";
+  if (label === "Pokai") return "pokai";
+  return "tool";
+}
+
+const TURN_HEADER_RE = /^## \[(\d{2}:\d{2}:\d{2})\] (\w+)$/;
+
+export function appendTurn(path: string, turn: JournalTurn): void {
+  const block = `\n## [${turn.timestamp}] ${roleLabel(turn.role)}\n${turn.content}`;
+  appendFileSync(path, block, "utf-8");
+}
+
+export function readSession(path: string): JournalSession {
+  const raw = readFileSync(path, "utf-8");
+  const lines = raw.split("\n");
+
+  if (lines.length < 2 || lines[0] !== "---") {
+    throw new Error(`Invalid journal file: missing frontmatter in ${path}`);
+  }
+
+  const fmEnd = lines.indexOf("---", 1);
+  if (fmEnd === -1) {
+    throw new Error(`Invalid journal file: unclosed frontmatter in ${path}`);
+  }
+
+  const fmLines = lines.slice(1, fmEnd);
+  const fm = parseFrontmatter(fmLines);
+
+  const turns: JournalTurn[] = [];
+  let currentTurn: JournalTurn | null = null;
+
+  for (let i = fmEnd + 1; i < lines.length; i++) {
+    const line = lines[i];
+    const match = line.match(TURN_HEADER_RE);
+
+    if (match) {
+      if (currentTurn) {
+        currentTurn.content = currentTurn.content.trimEnd();
+        turns.push(currentTurn);
+      }
+      currentTurn = {
+        timestamp: match[1],
+        role: parseRole(match[2]),
+        content: "",
+      };
+    } else if (currentTurn) {
+      currentTurn.content += (currentTurn.content ? "\n" : "") + line;
+    }
+  }
+
+  if (currentTurn) {
+    currentTurn.content = currentTurn.content.trimEnd();
+    turns.push(currentTurn);
+  }
+
+  return {
+    sessionId: fm["session_id"],
+    startedAt: fm["started_at"],
+    model: fm["model"],
+    extracted: fm["extracted"] === "true",
+    turns,
+  };
+}
+
+export function listSessions(journalDir: string): SessionMeta[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(journalDir);
+  } catch {
+    return [];
+  }
+
+  const sessions: SessionMeta[] = [];
+  for (const entry of entries) {
+    if (!entry.endsWith(".md")) continue;
+    try {
+      const session = readSession(join(journalDir, entry));
+      sessions.push({
+        sessionId: session.sessionId,
+        startedAt: session.startedAt,
+        model: session.model,
+        extracted: session.extracted,
+      });
+    } catch {
+      // skip files that can't be parsed
+    }
+  }
+  return sessions;
+}

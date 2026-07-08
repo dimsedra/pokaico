@@ -15,7 +15,8 @@
     "ai": "^7.0.18",
     "better-sqlite3": "^12.11.1",
     "mastra": "^1.18.2",
-    "onnxruntime-node": "^1.27.0"
+    "onnxruntime-node": "^1.27.0",
+    "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

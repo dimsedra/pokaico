@@ -20,15 +20,15 @@
 
 ---
 
-## Phase 1: Data Layer — SQLite + Filesystem [ ]
+## Phase 1: Data Layer — SQLite + Filesystem [✅]
 
 **Scope:** All DB tables, journal format, memory directory structure, file I/O modules.
 
-- [ ] SQLite schema: `sessions`, `topics`, `resources`, `edges`, `session_pointers`, FTS5 virtual table, sqlite-vec virtual table
-- [ ] Journal module: write formatted `.md` (`journal/YYYY-MM-DD-<session>.md`), parse back to structured data
-- [ ] Memory module: topic directory tree (`memory/topics/<slug>/CONTEXT.md`, `memory/INDEX.md`), resource companion `.md` management
-- **Test:** DB creation, journal write/read roundtrip, memory dir creation matches expected structure
-- **Deliverable:** Working data layer with journal + memory filesystem ops + DB schema
+- [x] SQLite schema: `sessions`, `topics`, `resources`, `edges`, `session_pointers`, FTS5 virtual table, sqlite-vec virtual table
+- [x] Journal module: write formatted `.md` (`journal/YYYY-MM-DD-<session>.md`), parse back to structured data
+- [x] Memory module: topic directory tree (`memory/topics/<slug>/CONTEXT.md`, `memory/INDEX.md`), resource companion `.md` management
+- [x] **Test:** DB creation, journal write/read roundtrip, memory dir creation matches expected structure — 27 tests
+- [x] **Deliverable:** Working data layer with journal + memory filesystem ops + DB schema
 
 ---
 
