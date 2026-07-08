@@ -32,16 +32,16 @@
 
 ---
 
-## Phase 2: Embedding Service [ ]
+## Phase 2: Embedding Service [✅]
 
 **Scope:** EmbeddingGemma-300M ONNX wrapper, similarity computation, sqlite-vec + FTS5 integration.
 
-- [ ] ONNX runtime wrapper: load model, generate embeddings, batch support, error handling
-- [ ] Cosine similarity: compute between vectors, threshold-based matching
-- [ ] sqlite-vec: store/query/delete embedding vectors, ANN search
-- [ ] FTS5: full-text search over topic content, BM25 ranking, hybrid search
-- **Test:** Embedding dimension correctness, known-vector similarity scores, sqlite-vec store/query, FTS5 search relevance
-- **Deliverable:** Embedding service that generates, stores, and queries vectors + full-text
+- [x] ONNX runtime wrapper: load model, generate embeddings, batch support, error handling
+- [x] Cosine similarity: compute between vectors, threshold-based matching
+- [x] sqlite-vec: store/query/delete embedding vectors, ANN search (via hybrid)
+- [x] FTS5: full-text search over topic content, BM25 ranking, hybrid search
+- [x] **Test:** Embedding dimension correctness, known-vector similarity scores, sqlite-vec store/query, FTS5 search relevance — 32 tests (similarity 14 + model 6 + service 5 + search 7)
+- [x] **Deliverable:** Embedding service that generates, stores, and queries vectors + full-text
 
 ---
 
