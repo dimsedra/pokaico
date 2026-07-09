@@ -1,37 +1,105 @@
-There are so many cool ways to work with AI these days. Companions, workspaces, agents that build things for you. We genuinely love seeing this space grow.
+```
+╔════════════════════════════════════════╗
+║                                        ║
+║  █▀█ █▀█ █▄▀ █▀█ █ █▀▀ █▀█            ║
+║  █▀▀ █▄█ █ █ █▀█ █ █▄▄ █▄█            ║
+║                                       ║
+║      a cozy AI lifespace  ✦           ║
+║                                        ║
+╚════════════════════════════════════════╝
+```
 
-Pokaico is our little corner in that world — but it's a corner we care about deeply.
+There are so many cool ways to work with AI right now. Companions, workspaces, agents that build things for you. We genuinely love watching this space grow.
 
-Most AI tools remember your last conversation. Some remember a few. Pokaico is built around a different question: what if your companion truly knew you? Not just your chat history, but the patterns in how you think, what matters to you, how you like to communicate.
+Pokaico is our little corner in that world. Not better — just different. Built around a quiet idea.
 
-Not through better prompting. Through a design that treats your life as something worth remembering.
+*Most AI tools remember your last conversation. Some remember a few. What if your companion truly knew you?*
+
+Not just your chat history. The patterns. What matters to you. How you like to communicate. All of it — growing with you, every session, without you ever having to repeat yourself.
 
 ---
 
-### what it is
+## how it works
 
-Pokaico is a cozy desktop companion with pixel art, warm vibes, and a memory that actually sticks. Every conversation gets tucked into a **journal** — a faithful log of what was said, exactly as it was said. Then quietly, in the background, something lovely happens: patterns start to form. Topics emerge. Your pokai starts connecting the dots.
+Pokaico sits on your desktop. Right there, in its own window. Pixel art glowing softly. Ready.
 
-This isn't just clever summarization. It's a **memory pipeline** that distills conversations into organized, evergreen topics — including foundational ones about who you are, your background, how you like to communicate. Updated every session, so your companion stays fresh without you having to repeat yourself.
+Every conversation becomes a **journal entry** — faithful, immutable, markdown. What was said, exactly as it was said. These files live on your machine. You can open them with Notepad.
 
-Other tools give you a vector database and call it memory. Pokaico gives you a growing understanding — one you can see, edit, and trust, because it's built from plain markdown files on your own machine.
+Then, quietly, while you're doing other things, a background worker reads those journals and starts to see patterns.
 
-### what you'll find
+It's called a **memory pipeline**. It takes each journal, summarizes the conversation, and asks: *is there anything new here?* If there is, it gently updates the right topics. Some are about your life — your hobbies, your work, your people. Some are foundational — who you are, your background, how you like to talk. These get refreshed every time, so your pokai never goes stale.
 
-A cozy chat interface with pixel art that feels like home. A **journal** that faithfully records every turn. A **memory system** that gently organizes what matters — always up to date, never cluttered. Tools like `search_topics` and `read_resource` that let your pokai find exactly what it needs, right when it matters.
+Everything lives in plain markdown:
 
-No cloud dependency. No vendor lock-in. Your data stays on your machine, in files you can read with any text editor. The SQLite database is just a fast index — delete it anytime, rebuild it from your journals. The source of truth is always yours.
+```
+memory/
+ └─ topics/
+     ├─ hiking/
+     │   ├─ CONTEXT.md       ← "User hikes every weekend. Prefers trails over roads."
+     │   └─ resources/       ← overflow content, long conversations
+     ├─ user-profile/
+     │   └─ CONTEXT.md       ← foundational — updated every session
+     └─ ...
+```
 
-### the tech
+The companion reads from these files. When you ask about hiking, it already knows. When your life changes, the files update. No prompt engineering. Just a system that pays attention.
 
-**Tauri 2** · **React** · **TypeScript/Node.js** · **Mastra** · **Xberg** · **SQLite**
+You can browse the topics any time. Edit them. Delete them. They're just folders and markdown — yours to keep, yours to understand.
+
+A SQLite database sits alongside as a fast search index. Delete it anytime — it rebuilds from your journals. The source of truth is always the files.
+
+---
+
+## what it is and what it isn't
+
+Pokaico is:
+
+- A cozy desktop companion with pixel art and warm vibes
+- A memory that actually sticks — persistent, organized, growing
+- Files on your machine you can read with any text editor
+- Free, offline-first, no cloud dependency
+
+Pokaico isn't:
+
+- A productivity tool (no kanban, no calendars, no email)
+- A cloud service (your data never leaves your machine)
+- A generic chatbot wrapper
+- Trying to be the fastest, smartest, or most powerful anything
+
+---
+
+## what's inside
+
+**journal** — immutable, append-only transcript of every turn. Write-only. Never mutated.
+
+**memory pipeline** — a background worker that distills conversations into organized topics. Uses Gemini (free tier) for now, but the pipeline is model-agnostic. Summarize → refresh foundational → extract → write → reindex. Every step verified with 167 tests.
+
+**topics** — folders of CONTEXT.md files. Organized. Searchable. Updated every session. Never cluttered because old content overflows to resources/ instead of endless accumulation.
+
+**tools** — `search_topics` and `read_resource` let your pokai find exactly what it needs, right when it matters. Hybrid search (vector + keyword) across your entire memory.
+
+**all local** — SQLite + FTS5 + sqlite-vec for fast retrieval. E5-small for embeddings (384-dim, multilingual, CPU-friendly). No API keys required for search.
+
+---
+
+## tech
 
 Built with care, for people who want their AI to feel like home.
 
-### come say hi
-
-Pokaico isn't quite ready yet — we're building it slowly, with a lot of thought and a fair amount of pixel art. But we'd love for you to follow along.
+`Tauri 2` &middot; `React` &middot; `TypeScript/Node.js` &middot; `Mastra` &middot; `SQLite`
 
 ---
 
-*cozy AI lifespace · a pokai that truly gets you · pixel art · yours forever*
+## come say hi
+
+Pokaico isn't quite ready yet. We're building it slowly — a lot of thought, a fair amount of pixel art, and way too many tests for a v0.1.
+
+Star the repo if you'd like to follow along. Pull requests and ideas are welcome, but so is just saying hello.
+
+---
+
+```
+    ◜◝  ◜◝
+   (◕‿◕)      pokaico
+    ◟◞  ◟◞    a cozy AI lifespace
+```
