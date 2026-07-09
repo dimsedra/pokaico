@@ -114,20 +114,18 @@ Response.`,
   });
 });
 
-describe("E3 v2: Large content consecutive updates — information loss", () => {
-  it("accumulates large updates (2000 chars each) and verifies content loss", async () => {
+describe("E3 v2: Large content updates — all preserved inline", () => {
+  it("accumulates large updates (2000 chars each) without overflow", async () => {
     const { applyChanges } = await import("../../src/memory/writer");
     const dir2 = mkdtempSync(join(tmpdir(), "edge-e3v2-"));
     const mem = join(dir2, "memory");
     mkdirSync(join(mem, "topics"), { recursive: true });
 
-    // Create with substantial content
     await applyChanges(
       [{ topicId: "big-topic", action: "create", content: "Initial topic: " + "X".repeat(300) }],
       mem, "s0", 0,
     );
 
-    // 30 updates, each ~2000 chars (~500 tokens)
     for (let i = 1; i <= 30; i++) {
       const bigContent = `Update #${i}: ` + "Y".repeat(1900) + ` More stuff for iteration ${i}.`;
       await applyChanges(
@@ -141,28 +139,17 @@ describe("E3 v2: Large content consecutive updates — information loss", () => 
     const hasResources = (await import("node:fs")).existsSync(resourcesPath);
 
     console.log("E3v2 final content length:", content.length, "chars");
-    console.log("E3v2 has overflow:", hasResources);
+    console.log("E3v2 has resources:", hasResources);
     console.log("E3v2 contains 'Initial topic':", content.includes("Initial topic"));
     console.log("E3v2 contains 'Update #1':", content.includes("Update #1"));
-    console.log("E3v2 contains 'Update #15':", content.includes("Update #15"));
     console.log("E3v2 contains 'Update #30':", content.includes("Update #30"));
 
-    if (!content.includes("Initial topic")) {
-      console.log("E3v2 VERDICT: BUG CONFIRMED — oldest content dropped from CONTEXT.md");
+    if (!hasResources && content.includes("Initial topic") && content.includes("Update #30")) {
+      console.log("E3v2 VERDICT: PASS — all content preserved inline, no auto-overflow");
+    } else if (hasResources) {
+      console.log("E3v2 VERDICT: FAIL — unexpected resources/ created");
     } else {
-      console.log("E3v2 VERDICT: PASS — oldest content preserved");
-    }
-
-    if (hasResources) {
-      const files = (await import("node:fs")).readdirSync(resourcesPath);
-      console.log("E3v2 overflow file count:", files.length);
-      if (files.length > 0) {
-        console.log("E3v2: WARNING — content overflowed to resources/");
-        const firstOverflow = (await import("node:fs")).readFileSync(
-          join(resourcesPath, files[files.length - 1]), "utf-8"
-        );
-        console.log("E3v2 last overflow content length:", firstOverflow.length);
-      }
+      console.log("E3v2 VERDICT: FAIL — oldest content dropped");
     }
 
     rmSync(dir2, { recursive: true, force: true });

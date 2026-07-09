@@ -5,20 +5,18 @@ import { tmpdir } from "node:os";
 import { applyChanges } from "../../src/memory/writer";
 import type { TopicChange } from "../../src/memory/types";
 
-describe("E3: 50 consecutive topic updates — information loss", () => {
-  it("accumulates 50 updates and checks for content loss", async () => {
+describe("E3: 50 consecutive topic updates — all content preserved inline", () => {
+  it("accumulates 50 updates without truncation or overflow", async () => {
     const dir = mkdtempSync(join(tmpdir(), "edge-e3-"));
     const memoryDir = join(dir, "memory");
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
 
-    // Create topic first
     await applyChanges(
       [{ topicId: "growing-topic", action: "create", content: "Initial state: topic about learning." }],
       memoryDir,
       "s1", 1000,
     );
 
-    // 50 consecutive updates
     for (let i = 1; i <= 50; i++) {
       await applyChanges(
         [{ topicId: "growing-topic", action: "update", content: `Update #${i}: More learning progress recorded here.` }],
@@ -28,22 +26,22 @@ describe("E3: 50 consecutive topic updates — information loss", () => {
     }
 
     const content = readFileSync(join(memoryDir, "topics", "growing-topic", "CONTEXT.md"), "utf-8");
-    const resourcesDir = join(memoryDir, "topics", "growing-topic", "resources");
-    const hasResources = existsSync(resourcesDir) && readdirSync(resourcesDir).length > 0;
+    const rd = join(memoryDir, "topics", "growing-topic", "resources");
+    const hasResources = existsSync(rd);
 
     console.log("E3 final content length:", content.length);
-    console.log("E3 has overflow resources:", hasResources);
+    console.log("E3 has resources dir:", hasResources);
     console.log("E3 contains 'Initial state':", content.includes("Initial state"));
     console.log("E3 contains 'Update #1':", content.includes("Update #1"));
-    console.log("E3 contains 'Update #25':", content.includes("Update #25"));
     console.log("E3 contains 'Update #50':", content.includes("Update #50"));
 
-    if (!content.includes("Initial state") || !content.includes("Update #1")) {
-      console.log("E3 VERDICT: BUG CONFIRMED — oldest content was lost");
-    } else if (hasResources && readdirSync(resourcesDir).length > 0) {
-      console.log("E3 VERDICT: WARNING — content overflowed to resources, CONTEXT.md is only a summary");
+    // After fix: CONTEXT.md always keeps all content; no auto-overflow to resources
+    if (content.includes("Initial state") && content.includes("Update #50") && !hasResources) {
+      console.log("E3 VERDICT: PASS — all content preserved inline, no auto-overflow");
+    } else if (hasResources) {
+      console.log("E3 VERDICT: FAIL — unexpected resources/ created from auto-overflow");
     } else {
-      console.log("E3 VERDICT: PASS — all content preserved inline");
+      console.log("E3 VERDICT: FAIL — content lost");
     }
 
     rmSync(dir, { recursive: true, force: true });
@@ -97,12 +95,4 @@ describe("E8: Path traversal via topicId in writer", () => {
   });
 });
 
-describe("E11: removeProvenanceSuffix dead code", () => {
-  it("is defined but never called", () => {
-    console.log("E11: Confirming removeProvenanceSuffix is dead code via manual review");
-    console.log("E11: Grep output would show 0 call sites outside definition");
-    console.log("E11: Also functionally incorrect — strips suffix, but buildContent writes prefix");
-    console.log("E11: If it were called, it would never match the actual format");
-    console.log("E11 VERDICT: CONFIRMED DEAD CODE");
-  });
-});
+

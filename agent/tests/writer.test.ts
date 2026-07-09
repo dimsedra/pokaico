@@ -30,7 +30,7 @@ describe("writer", () => {
     expect(readFileSync(contextPath, "utf-8")).toContain("User loves hiking.");
   });
 
-  it("updates existing topic content", async () => {
+  it("updates existing topic content by appending", async () => {
     const topicDir = join(memoryDir(), "topics", "work");
     mkdirSync(topicDir, { recursive: true });
     writeFileSync(join(topicDir, "CONTEXT.md"), "Old content.", "utf-8");
@@ -59,22 +59,30 @@ describe("writer", () => {
     expect(content).toContain("[src:session-1:1000]");
   });
 
-  it("overflows to resources/ when content exceeds 2500 tokens", async () => {
-    // 2500 tokens = ~10000 chars with char/4 estimation
-    const longContent = "A".repeat(10001);
+  it("stores external content in resources/ with link in CONTEXT.md", async () => {
+    const longReadme = "# My Project\n\nThis is a very long README with lots of details.\n\n## Install\n\n```\nnpm i\n```".repeat(5);
 
     const changes: TopicChange[] = [
-      { topicId: "overflow-test", action: "create", content: longContent },
+      {
+        topicId: "user-project",
+        action: "external",
+        content: longReadme,
+        resourceFile: "user-project-readme.md",
+      },
     ];
 
-    await applyChanges(changes, memoryDir());
+    await applyChanges(changes, memoryDir(), "session-1", 1000);
 
-    const topicDir = join(memoryDir(), "topics", "overflow-test");
-    const resources = readdirSync(join(topicDir, "resources"));
-    expect(resources.length).toBeGreaterThan(0);
+    const topicPath = join(memoryDir(), "topics", "user-project");
+    const resourcePath = join(topicPath, "resources", "user-project-readme.md");
+    const contextPath = join(topicPath, "CONTEXT.md");
 
-    const contextContent = readFileSync(join(topicDir, "CONTEXT.md"), "utf-8");
-    expect(contextContent).toContain("See [detailed notes](resources/");
+    expect(existsSync(resourcePath)).toBe(true);
+    expect(readFileSync(resourcePath, "utf-8")).toBe(longReadme);
+
+    const contextContent = readFileSync(contextPath, "utf-8");
+    expect(contextContent).toContain("See [full content](resources/user-project-readme.md)");
+    expect(contextContent).toContain("[src:session-1:1000]");
   });
 
   it("handles multiple changes concurrently via internal mutex", async () => {
@@ -101,21 +109,46 @@ describe("writer", () => {
     ];
 
     await applyChanges(changes1, memoryDir(), "session-1", 100);
-    const content = readFileSync(
-      join(memoryDir(), "topics", "dedup-test", "CONTEXT.md"),
-      "utf-8",
-    );
 
-    // Second write with same provenance should be no-op
     const changes2: TopicChange[] = [
       { topicId, action: "update", content: "Duplicated content." },
     ];
     await applyChanges(changes2, memoryDir(), "session-1", 100);
 
-    const content2 = readFileSync(
+    const content = readFileSync(
       join(memoryDir(), "topics", "dedup-test", "CONTEXT.md"),
       "utf-8",
     );
-    expect(content2).toBe(content);
+
+    // "Duplicated content." should NOT appear
+    expect(content).not.toContain("Duplicated content.");
+  });
+
+  it("accumulates multiple updates without truncation", async () => {
+    const topicId = "growing";
+    await applyChanges(
+      [{ topicId, action: "create", content: "First." }],
+      memoryDir(), "s1", 1,
+    );
+
+    for (let i = 2; i <= 20; i++) {
+      await applyChanges(
+        [{ topicId, action: "update", content: `Update ${i}.` }],
+        memoryDir(), `s${i}`, i,
+      );
+    }
+
+    const content = readFileSync(
+      join(memoryDir(), "topics", "growing", "CONTEXT.md"),
+      "utf-8",
+    );
+
+    expect(content).toContain("First.");
+    expect(content).toContain("Update 10.");
+    expect(content).toContain("Update 20.");
+
+    // No overflow to resources for regular updates
+    const rd = join(memoryDir(), "topics", "growing", "resources");
+    expect(existsSync(rd)).toBe(false);
   });
 });

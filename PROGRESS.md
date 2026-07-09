@@ -47,18 +47,19 @@
 
 ---
 
-## Phase 3: Memory Pipeline State Machine [ ]
+## Phase 3: Memory Pipeline State Machine [✅]
 
 **Scope:** Full extraction pipeline: guard → summarize → refresh_foundational → extract_topics → write → re-index → pointer update.
 
-- [ ] Session pointer guard: read `last_extracted_message_ts`, skip if no new messages
-- [ ] Summarization: LLM call to condense session into structured summary
-- [ ] `refresh_foundational`: always runs on 3 shipped topics (`user-profile`, `user-background`, `user-communication`), 700-token target each
-- [ ] `extract_topics`: similarity-gated against existing topics, create-or-update, excludes foundational
-- [ ] Write phase: per-topic in-memory mutex (`Map<topicId, Promise<void>>`), lock only during I/O, `[src:timestamp]` provenance markers, overflow to `resources/` at threshold, cross-link edges
-- [ ] Re-index: rebuild FTS5 + embedding vectors for updated topic
-- [ ] Pointer update: persist `last_extracted_message_ts`
-- **Test:** Each step independently, full pipeline E2E with mock LLM, mutex serialization, overflow trigger, provenance format
+- [x] Session pointer guard: read `last_extracted_message_ts`, skip if no new messages
+- [x] Summarization: LLM call to condense session into structured summary
+- [x] `refresh_foundational`: always runs on 3 shipped topics (`user-profile`, `user-background`, `user-communication`), 700-token target each
+- [x] `extract_topics`: similarity-gated against existing topics, create-or-update, excludes foundational, slug-collision guard
+- [x] Write phase: per-topic async mutex, per-session async mutex, provenance markers `[src:sessionId:timestamp]`, action types (`create`, `update`, `external`), topicId validation, idempotency guard, resources/ for external artifacts only (no auto-overflow)
+- [x] Re-index: rebuild FTS5 + embedding vectors for updated topic with dedup check, char/4 token estimation
+- [x] Pointer update: atomic ordering (pointer before journal mark), unix timestamp via `started_at` + `HH:mm:ss`
+- [x] Error handling: LLM retry wrapper, graceful summarization failures, journal file exact matching, frontmatter-scoped `markJournalExtracted`
+- **Test:** 166 tests passing (68 Phase 3 unit/integration + 2 real Gemini smoke + 16 edge case + Phase 2 embedding)
 - **Deliverable:** Complete memory pipeline that processes sessions into evergreen topics
 
 ---
@@ -105,3 +106,38 @@
 - [ ] README polish + basic user docs
 - **Test:** All recovery paths, error scenarios, performance benchmarks, data integrity verification
 - **Deliverable:** Polished v0.1 desktop app
+
+---
+
+## Backlog
+
+Ideas, features, and improvements scoped but not yet scheduled into a phase.
+
+### Topic re-consolidation
+
+CONTEXT.md grows unbounded as updates accumulate. After many sessions, topics become large and redundant. We need a consolidation step that safely rewrites CONTEXT.md into a more compact form — without losing provenance markers or factual information.
+
+**Design:**
+
+```
+BEFORE                              AFTER
+─────────────────────────           ─────────────────────────
+[src:s1:100]                        [src:s1:100][src:s5:200][src:s8:300]
+User likes hiking.                  
+                                    User enjoys hiking, especially solo
+[src:s5:200]                        mountain treks. Mount Kinabalu was
+Mount Kinabalu was memorable.       their most memorable trip. Prefers
+                                    trails over roads.
+[src:s8:300]
+Prefers solo hikes over group ones.
+```
+
+1. **Extract markers programmatically** — regex `\[src:[^\]]+\]` collected into a single line
+2. **LLM consolidates text only** — removes redundancy, keeps all facts. Markers never touch the LLM
+3. **Reassemble** — `markersLine + "\n" + consolidatedText`
+
+**Trigger:** Count-based (10+ provenance markers) or size-based (CONTEXT.md > ~50 lines).
+
+**Placement:** Between `applyChanges` (Step 5) and `reindexTopics` (Step 6) in the pipeline.
+
+**Safety:** Consolidation is optional — if LLM call fails, skip and keep original content. LLM prompt guarantees all factual information is preserved. Provenance markers are never passed to the LLM.

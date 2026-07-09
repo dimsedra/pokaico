@@ -12,9 +12,10 @@ export type FoundationalUpdate = {
 
 export type TopicChange = {
   topicId: string;
-  action: "update" | "create";
+  action: "update" | "create" | "external";
   content: string;
   similarityScore?: number;
+  resourceFile?: string;
 };
 
 export type PipelineResult = {
