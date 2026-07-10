@@ -19,7 +19,6 @@ function slugify(text: string, existingSlugs?: Set<string>): string {
 
   if (!slug) slug = "topic";
 
-  // Resolve collisions
   if (existingSlugs && existingSlugs.has(slug)) {
     let counter = 1;
     while (existingSlugs.has(`${slug}-${counter}`)) {
@@ -48,38 +47,90 @@ function pickExistingTopic(
   return null;
 }
 
+function buildContent(segment: { summary: string; keyPoints: string[] }): string {
+  const points = segment.keyPoints.filter((k) => k.length > 0);
+  const pointsSection = points.length > 0
+    ? `\n\nKey points:\n${points.map((k) => `- ${k}`).join("\n")}`
+    : "";
+  return `${segment.summary}${pointsSection}`;
+}
+
 export async function extractTopics(
   summary: SummaryOutput,
   existingTopics: TopicMeta[],
   searchSimilar: (query: string, limit?: number) => Promise<SearchResult[]>,
 ): Promise<TopicChange[]> {
-  const results = await searchSimilar(summary.summary, 5);
+  const segments = Array.isArray(summary.topics) && summary.topics.length > 0
+    ? summary.topics
+    : null;
 
-  const match = pickExistingTopic(results, existingTopics);
+  if (!segments) {
+    // Fall back to old single-segment behavior
+    const results = await searchSimilar(summary.summary, 5);
+    const match = pickExistingTopic(results, existingTopics);
 
-  if (match) {
+    if (match) {
+      return [
+        {
+          topicId: match.topicId,
+          action: "update",
+          content: summary.summary,
+          similarityScore: match.score,
+        },
+      ];
+    }
+
+    const existingSlugs = new Set(existingTopics.map((t) => t.topicId));
+    const topicId = slugify(summary.keyPoints[0] || summary.summary, existingSlugs);
     return [
       {
-        topicId: match.topicId,
-        action: "update",
-        content: summary.summary,
-        similarityScore: match.score,
+        topicId,
+        action: "create",
+        content: buildContent(summary),
       },
     ];
   }
 
-  // Create new topic — guard against slug collision
+  // Multi-segment path
   const existingSlugs = new Set(existingTopics.map((t) => t.topicId));
-  const topicId = slugify(summary.keyPoints[0] || summary.summary, existingSlugs);
-  const points = summary.keyPoints.filter((k) => k.length > 0);
-  const pointsSection = points.length > 0
-    ? `\n\nKey points:\n${points.map((k) => `- ${k}`).join("\n")}`
-    : "";
-  return [
-    {
-      topicId,
-      action: "create",
-      content: `${summary.summary}${pointsSection}`,
-    },
-  ];
+  const batchSlugs = new Set<string>();
+  const matchedTopics = new Map<string, { content: string; score: number }>();
+  const newTopics: TopicChange[] = [];
+
+  for (const segment of segments) {
+    const results = await searchSimilar(segment.summary, 5);
+    const match = pickExistingTopic(results, existingTopics);
+
+    if (match) {
+      if (matchedTopics.has(match.topicId)) {
+        const prev = matchedTopics.get(match.topicId)!;
+        matchedTopics.set(match.topicId, {
+          content: `${prev.content}\n\n${segment.summary}`,
+          score: Math.max(prev.score, match.score),
+        });
+      } else {
+        matchedTopics.set(match.topicId, {
+          content: segment.summary,
+          score: match.score,
+        });
+      }
+    } else {
+      const allSlugs = new Set([...existingSlugs, ...batchSlugs]);
+      const topicId = slugify(segment.title, allSlugs);
+      batchSlugs.add(topicId);
+
+      newTopics.push({
+        topicId,
+        action: "create",
+        content: buildContent(segment),
+      });
+    }
+  }
+
+  const updates: TopicChange[] = [];
+  for (const [topicId, { content, score }] of matchedTopics) {
+    updates.push({ topicId, action: "update", content, similarityScore: score });
+  }
+
+  return [...updates, ...newTopics];
 }

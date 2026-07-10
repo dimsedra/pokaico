@@ -6,6 +6,18 @@ describe("extractTopics", () => {
   const summary = {
     summary: "User loves hiking in mountains.",
     keyPoints: ["Hiking is a hobby"],
+    topics: [
+      { title: "hiking hobby", summary: "User loves hiking in mountains.", keyPoints: ["Hiking is a hobby"] },
+    ],
+  };
+
+  const multiSummary = {
+    summary: "User got promoted and cycles to work.",
+    keyPoints: ["Promoted at work", "Cycles 15km daily"],
+    topics: [
+      { title: "job promotion", summary: "User promoted at work.", keyPoints: ["Got promoted to senior engineer"] },
+      { title: "cycling commute", summary: "User cycles 15km each way to work.", keyPoints: ["Cycles 15km", "Saves money"] },
+    ],
   };
 
   it("returns create action when no similar topics exist", async () => {
@@ -74,10 +86,94 @@ describe("extractTopics", () => {
     const summary2 = {
       summary: "Hiking is fun",
       keyPoints: ["Hiking is a hobby"],
+      topics: [
+        { title: "hiking", summary: "Hiking is fun", keyPoints: ["Hiking is a hobby"] },
+      ],
     };
 
     const result = await extractTopics(summary2, existingTopics, searchSimilar);
     expect(result[0].action).toBe("create");
-    expect(result[0].topicId).toBe("hiking-is-a-hobby-1");
+    expect(result[0].topicId).toBe("hiking");
+  });
+
+  // Multi-topic tests
+  it("creates multiple topics from multi-segment summary", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+
+    const result = await extractTopics(multiSummary, [], searchSimilar);
+    expect(result).toHaveLength(2);
+    expect(result[0].action).toBe("create");
+    expect(result[1].action).toBe("create");
+    expect(result[0].topicId).toContain("job");
+    expect(result[1].topicId).toContain("cycl");
+  });
+
+  it("produces mix of create and update for multi-segment", async () => {
+    const searchSimilar = vi.fn();
+    searchSimilar.mockResolvedValueOnce([]); // "job promotion" → no match
+    searchSimilar.mockResolvedValueOnce([
+      { topicId: "cycling", score: 0.92, content: "Cycling stuff", sourcePath: "" },
+    ]); // "cycling commute" → match
+
+    const existingTopics: TopicMeta[] = [
+      { topicId: "cycling", summary: "Cycling hobby", isFoundational: false, updatedAt: 100 },
+    ];
+
+    const result = await extractTopics(multiSummary, existingTopics, searchSimilar);
+    const creates = result.filter((c) => c.action === "create");
+    const updates = result.filter((c) => c.action === "update");
+
+    expect(creates).toHaveLength(1);
+    expect(creates[0].topicId).toContain("job");
+    expect(updates).toHaveLength(1);
+    expect(updates[0].topicId).toBe("cycling");
+  });
+
+  it("dedupes when two segments match the same existing topic", async () => {
+    const searchSimilar = vi.fn();
+    searchSimilar.mockResolvedValueOnce([
+      { topicId: "life-events", score: 0.9, content: "Promotion stuff", sourcePath: "" },
+    ]);
+    searchSimilar.mockResolvedValueOnce([
+      { topicId: "life-events", score: 0.9, content: "Cycling stuff", sourcePath: "" },
+    ]);
+
+    const existingTopics: TopicMeta[] = [
+      { topicId: "life-events", summary: "Things happening in life", isFoundational: false, updatedAt: 200 },
+    ];
+
+    const result = await extractTopics(multiSummary, existingTopics, searchSimilar);
+    expect(result).toHaveLength(1);
+    expect(result[0].action).toBe("update");
+    expect(result[0].topicId).toBe("life-events");
+  });
+
+  it("handles batch slug collision between new topics", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+
+    const sameTitleSummaries = {
+      summary: "Two topics about cooking",
+      keyPoints: ["Cooking pasta", "Cooking rice"],
+      topics: [
+        { title: "cooking", summary: "Making pasta.", keyPoints: ["Pasta"] },
+        { title: "cooking", summary: "Making rice.", keyPoints: ["Rice"] },
+      ],
+    };
+
+    const result = await extractTopics(sameTitleSummaries, [], searchSimilar);
+    expect(result).toHaveLength(2);
+    const ids = result.map((c) => c.topicId);
+    expect(new Set(ids).size).toBe(2); // should be unique
+    expect(ids[0]).toBe("cooking");
+    expect(ids[1]).toMatch(/cooking-\d+/);
+  });
+
+  it("falls back to old behavior when topics array is empty", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const oldStyle = { summary: "Just hiking.", keyPoints: ["hiking"], topics: [] };
+
+    const result = await extractTopics(oldStyle, [], searchSimilar);
+    expect(result).toHaveLength(1);
+    expect(result[0].action).toBe("create");
   });
 });
