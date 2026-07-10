@@ -25,6 +25,23 @@ export type TopicChange = {
   resourceFile?: string;
 };
 
+export type CompactOverflow = {
+  filename: string;
+  content: string;
+  relationship: string;
+};
+
+export type CompactEdge = {
+  toTopic: string;
+  relationship: string;
+};
+
+export type CompactResult = {
+  context: string;
+  overflow: CompactOverflow[];
+  edges: CompactEdge[];
+};
+
 export type PipelineResult = {
   sessionId: string;
   hasNewMessages: boolean;
