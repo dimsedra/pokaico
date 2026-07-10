@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { PokaicoDb } from "../db/client";
+import { countTokens } from "./tokens";
 
 function contextPath(memoryDir: string, topicId: string): string {
   return join(memoryDir, "topics", topicId, "CONTEXT.md");
@@ -56,8 +57,4 @@ function readResourceContents(memoryDir: string, topicId: string): string[] {
   return readdirSync(rd)
     .filter((f) => f.endsWith(".md"))
     .map((f) => readFileSync(join(rd, f), "utf-8"));
-}
-
-function countTokens(text: string): number {
-  return Math.ceil(text.length / 4);
 }
