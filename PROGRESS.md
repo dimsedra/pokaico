@@ -47,9 +47,9 @@
 
 ---
 
-## Phase 3: Memory Pipeline State Machine [✅]
+## Phase 3: Memory Pipeline State Machine [~] (reopened)
 
-**Scope:** Full extraction pipeline: guard → summarize → refresh_foundational → extract_topics → write → re-index → pointer update.
+**Scope:** Full extraction pipeline: guard → summarize → refresh_foundational → extract_topics → write → re-index → pointer update. **Reopened for: multi-topic extraction + data directory config.**
 
 - [x] Session pointer guard: read `last_extracted_message_ts`, skip if no new messages
 - [x] Summarization: LLM call to condense session into structured summary
@@ -61,6 +61,16 @@
 - [x] Error handling: LLM retry wrapper, graceful summarization failures, journal file exact matching, frontmatter-scoped `markJournalExtracted`
 - **Test:** 166 tests passing (68 Phase 3 unit/integration + 2 real Gemini smoke + 16 edge case + Phase 2 embedding)
 - **Deliverable:** Complete memory pipeline that processes sessions into evergreen topics
+
+### Reopened — multi-topic extraction + data directory config
+- [ ] `config.ts`: resolveDataRoot (override → POKAICO_DATA_DIR → settings → Documents\Pokaico), getPaths, ensurePaths, setDataDir (persist ke %APPDATA%\Pokaico\config.json)
+- [ ] `types.ts`: TopicSegment + SummaryOutput.topics[]
+- [ ] `summarizer.ts`: segmentasi percakapan jadi banyak topik dalam 1 LLM call
+- [ ] `extract.ts`: banyak TopicChange per sesi (create/update per segmen), dedupe segmen→topik-existing sama, collision slug dalam batch
+- [ ] `pipeline.ts`: verifikasi loop multi-topik + kalibrasi SIMILARITY_THRESHOLD (skala combinedScore)
+- [ ] `index.ts`: wiring minimal pakai path dari config
+- [ ] Smoke E2E (Gemini + E5 asli): 1 sesi 2 subjek → 2 topik; chat baru → retrieve; sesi ke-2 → update topik lama
+- [ ] Tutup kembali Phase 3 setelah semua hijau
 
 ---
 
@@ -112,6 +122,10 @@
 ## Backlog
 
 Ideas, features, and improvements scoped but not yet scheduled into a phase.
+
+### Cross-link edges (NEXT — dikerjakan setelah retrieval multi-topik selesai)
+
+SPEC §6 baris 187: jika satu sesi menyentuh ≥2 topik, tulis edge di tabel `edges` + referensi inline di CONTEXT.md (`See [notes](resources/...md)`). Ditunda sementara agar fokus ke alur save→retrieve dulu.
 
 ### Topic re-consolidation
 
