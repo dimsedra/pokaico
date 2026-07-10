@@ -311,4 +311,52 @@ describe("pipeline E2E", () => {
 
     expect(result.hasNewMessages).toBe(true);
   });
+
+  it("creates multiple topics from multi-segment summary", async () => {
+    const sessionId = "multi-topic";
+    const startedAt = "2026-07-08T19:00:00+07:00";
+    makeJournal(journalDir, sessionId, startedAt, [
+      { ts: "19:00:00", role: "User", content: "I got promoted at work! Also I've been cycling more." },
+      { ts: "19:00:15", role: "Pokai", content: "Congrats! Tell me about both." },
+      { ts: "19:00:30", role: "User", content: "The promotion is to senior engineer. Cycling is 15km each way." },
+    ]);
+
+    mockSummarize.mockResolvedValue({
+      summary: "User got promoted and cycles to work.",
+      keyPoints: ["Promoted to senior engineer", "Cycles 15km each way"],
+      topics: [
+        { title: "job promotion", summary: "User promoted to senior engineer.", keyPoints: ["Promoted to senior engineer"] },
+        { title: "cycling commute", summary: "User cycles 15km each way.", keyPoints: ["Cycles 15km each way"] },
+      ],
+    });
+    mockRefresh.mockResolvedValue([]);
+
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexTopic = vi.fn().mockResolvedValue(undefined);
+    const mockLlm = {} as never;
+
+    const result = await processSession(sessionId, {
+      llm: mockLlm,
+      searchSimilar,
+      indexTopic,
+      db,
+      memoryDir,
+      journalDir,
+    });
+
+    expect(result.hasNewMessages).toBe(true);
+    expect(result.changes).toHaveLength(2);
+    expect(result.changes[0].action).toBe("create");
+    expect(result.changes[1].action).toBe("create");
+
+    // Both topic files should exist
+    const topic1 = join(memoryDir, "topics", result.changes[0].topicId, "CONTEXT.md");
+    const topic2 = join(memoryDir, "topics", result.changes[1].topicId, "CONTEXT.md");
+    expect(readFileSync(topic1, "utf-8").length).toBeGreaterThan(0);
+    expect(readFileSync(topic2, "utf-8").length).toBeGreaterThan(0);
+
+    // Both should be reindexed
+    expect(result.reindexed).toHaveLength(2);
+    expect(indexTopic).toHaveBeenCalledTimes(2);
+  });
 });

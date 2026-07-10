@@ -1,7 +1,7 @@
 import type { SummaryOutput, TopicChange } from "./types";
 import type { TopicMeta } from "./topics";
 
-const SIMILARITY_THRESHOLD = 0.85;
+const SIMILARITY_THRESHOLD = 0.35;
 
 type SearchResult = {
   topicId: string;
