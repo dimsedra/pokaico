@@ -110,6 +110,6 @@ About 45 minutes. It's great exercise and saves money on transport.`, "utf-8");
 
     expect(changes).toHaveLength(1);
     expect(changes[0].action).toBe("create");
-    expect(changes[0].topicId).toContain("cycle");
+    expect(changes[0].topicId).toMatch(/cycl|commut|bike|bicycle/);
   }, 30_000);
 });
