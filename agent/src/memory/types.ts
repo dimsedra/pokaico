@@ -1,8 +1,15 @@
 import type { JournalTurn } from "./journal";
 
+export type TopicSegment = {
+  title: string;
+  summary: string;
+  keyPoints: string[];
+};
+
 export type SummaryOutput = {
   summary: string;
   keyPoints: string[];
+  topics: TopicSegment[];
 };
 
 export type FoundationalUpdate = {

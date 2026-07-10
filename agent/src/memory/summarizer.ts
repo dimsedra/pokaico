@@ -5,10 +5,19 @@ import type { JournalTurn } from "./journal";
 import type { SummaryOutput } from "./types";
 
 const summarySchema = z.object({
-  summary: z.string().describe("A concise 2-3 sentence summary of the conversation"),
+  summary: z.string().describe("A concise 2-3 sentence summary of the entire conversation"),
   keyPoints: z
     .array(z.string())
-    .describe("Key facts, events, or insights from the conversation"),
+    .describe("Key facts, events, or insights from the entire conversation"),
+  topics: z.array(
+    z.object({
+      title: z.string().describe("Short topic title (2-4 words, suitable for a slug)"),
+      summary: z.string().describe("1-2 sentence summary specific to this topic segment"),
+      keyPoints: z.array(z.string()).describe("Key facts specific to this topic segment"),
+    }),
+  ).describe(
+    "Distinct topic segments found in the conversation. Split if the conversation covers multiple different subjects.",
+  ),
 });
 
 export async function summarize(
@@ -26,7 +35,7 @@ export async function summarize(
   const { output } = await generateText({
     model,
     output: Output.object({ schema: summarySchema }),
-    prompt: `Summarize this conversation transcript. Extract key facts, insights, events, and user information mentioned.
+    prompt: `Summarize this conversation transcript. Identify distinct topic segments if the conversation covers multiple different subjects. For each segment, provide a short title and specific summary.
 
 Transcript:
 ${transcript}`,
