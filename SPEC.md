@@ -186,11 +186,11 @@ Your spec already describes this well; here's it translated into concrete trigge
 4. **`refresh_foundational(summary, foundational_topics[])`** — always runs. Sends all foundational CONTEXT.md + summary in one prompt. LLM decides per topic whether new info exists. Returns `[{topicId, newContent | null}]`. Never similarity-gated — foundational topics are too important to leave to a threshold.
 5. **`extract_topics(summary, indexSlugs?)`** — two-phase:
    - **Phase A (deterministic, no LLM):** reads INDEX.md (the canonical routing map) before creating anything. If a topic slug already exists in INDEX.md, the system **updates** that topic instead of creating a duplicate. This is the primary gate, replacing the old similarity-threshold approach.
-   - **Phase B (similarity fallback):** only when no INDEX match is found, falls back to embedding/FTS5 similarity search for near-matches. The similarity threshold is now a secondary safety net, not the primary decider.
-   - If ≥2 topics or resources touched, write cross-link edges in SQLite and inline references in CONTEXT.md.
-6. **Write phase** — for each topic needing update, acquire per-topic lock → read current file → attempt to condense new info into the token cap. Overflow to `resources/` is the *last resort*, used only when the LLM judges the content cannot be adequately condensed into CONTEXT.md without losing essential meaning. Each overflow file gets a cross-link edge (`"has-detailed-notes"`) and an inline reference in CONTEXT.md so the agent knows it exists.
+    - **Phase B (similarity fallback):** only when no INDEX match is found, falls back to embedding/FTS5 similarity search for near-matches. The similarity threshold is now a secondary safety net, not the primary decider.
+    - **Cross-topic edges (LLM-judged):** the summarizer output includes a `relatedTo` field with a short reason explaining the relationship (or empty if the topics are unrelated — e.g. a context switch). The pipeline writes these into CONTEXT.md as a `## Related` section and persists them to the `edges` table. Edges are never created mechanically based on co-occurrence alone.
+6. **Write phase** — for each topic needing update, acquire per-topic lock → read current file → attempt to condense new info into the token cap. Overflow to `resources/` is the *last resort*, used only when the LLM judges the content cannot be adequately condensed into CONTEXT.md without losing essential meaning. Each overflow file gets a cross-link edge (`"has-detailed-notes"`) and an inline reference in CONTEXT.md so the agent knows it exists. If the LLM determined cross-topic relationships (via `relatedTo`), append a `## Related` section with linked topic IDs and a short reason.
 7. **Re-index:** upsert changed topic chunks into `chunk_fts` / `chunk_vec`; update `topics.updated_at`, `topics.token_count`.
-8. **Observer (INDEX rebuild):** after every extraction, INDEX.md is mechanically rebuilt from the current topic graph — no LLM involved, always overwrites stale content atomically. This keeps the routing map fresh without manual maintenance.
+8. **Observer (INDEX rebuild):** after every extraction, INDEX.md is mechanically rebuilt from the current topic directories — no LLM involved, always overwrites stale content atomically. INDEX.md is a pure topic list (one line per topic + short description), no edges section. The routing map stays fresh without manual maintenance.
 9. **Update pointer:** `session_pointers.last_extracted_message_ts = latest_ts(session)`.
 
 ### Concurrency
@@ -229,7 +229,7 @@ The write side (extraction) populates `memory/` and the SQLite index. The read s
 
 On session open, the agent receives:
 - **System prompt** — static, <500 tokens.
-- **INDEX.md** — the canonical routing map. A compact listing of every topic (one line + summary) plus graph edges. The agent uses this to **route before searching**: if the user's question matches a known topic, the agent already knows where to look without an embedding call.
+- **INDEX.md** — the canonical routing map. A compact listing of every topic (one line + summary). The agent uses this to **route before searching**: if the user's question matches a known topic, the agent already knows where to look without an embedding call.
 - **Foundational topics** — shipped at app init, capped at 700 tokens each, 2100 total. Each is an always-loaded topic that the extraction pipeline also refreshes every cycle (see §6):
 
   | Topic | Path | What it captures |
@@ -299,7 +299,7 @@ Periodic LLM-driven pass that reviews `INDEX.md` and proposes topic merges, spli
 
 ### Process
 
-1. LLM reads `INDEX.md` (all topic summaries + edge labels) and the first ~50 lines of each `CONTEXT.md`.
+1. LLM reads `INDEX.md` (all topic summaries) + `## Related` sections in CONTEXT.md + the first ~50 lines of each CONTEXT.md.
 2. Proposes a diff: merge `user-preferences` ↔ `preferences`, split "work rants" out of `daily-life`, rename `misc` to something meaningful, etc.
 3. User reviews the proposal in-UI (accept/reject per change). Nothing auto-applied — gardening is destructive and needs human sign-off.
 4. On acceptance: rewrite `CONTEXT.md`, update `INDEX.md`, re-run extraction on affected sessions (or mark `extracted: false` on relevant journal files to trigger re-extraction).

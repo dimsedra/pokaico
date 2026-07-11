@@ -133,7 +133,22 @@ Tracking issues:
 
 **Scope:** Mastra conversational agent, 6 retrieval tools as Mastra tools, system prompt with INDEX-primary routing, native Tauri IPC bridge.
 **Arsitektur komunikasi:** Frontend ↔ Tauri Rust command ↔ stdin/stdout ↔ Node sidecar. Native IPC sejak awal agar tak perlu migrasi di v0.2.
-**⚠️ Blocker:** Issue [#7](https://github.com/dimsedra/pokaico/issues/7) (Foundational topics konsolidasi) harus selesai sebelum Group A dimulai.
+**Blocker Phase 4:** Issue [#7](https://github.com/dimsedra/pokaico/issues/7) (Foundational topics konsolidasi) dan [#8](https://github.com/dimsedra/pokaico/issues/8) (Cross-topic edges) harus selesai sebelum Group A dimulai.
+
+---
+
+### Reopened — Cross-topic edges: LLM-judged relatedTo [#8](https://github.com/dimsedra/pokaico/issues/8)
+
+**Reason:** `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topik dalam satu sesi, padahal user bisa context switch. Edges harus diputuskan oleh LLM:
+
+- [ ] `types.ts` — tambah field `relatedTo: [{topic: string, reason: string}]` di segment output
+- [ ] `summarizer.ts` — LLM output `relatedTo` (dengan reason)
+- [ ] `edges.ts` — hapus/ubah `linkCoOccurring`
+- [ ] `pipeline.ts` — step 6b pakai `relatedTo`, bukan `linkCoOccurring`
+- [ ] `topics.ts` — `regenerateIndex()` hapus `## Edges` dari INDEX.md (INDEX murni topic list)
+- [ ] Write phase — append `## Related` ke CONTEXT.md (dengan short desc)
+- [ ] `SPEC.md` — sinkronisasi desain
+- [ ] Tests — update semua test yang bergantung pada edges
 
 **Urutan task (sequential, no backtrack):**
 
