@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import type { PokaicoDb } from "../db/client";
 
 export type TopicMeta = {
   topicId: string;
@@ -81,4 +82,53 @@ export function ensureIndex(memoryDir: string): void {
   const lines = topics.map((t) => `- **${t.topicId}**: # "${t.summary}"`);
 
   writeFileSync(indexPath, `# Memory Index\n\n${lines.join("\n")}\n`, "utf-8");
+}
+
+type IndexEdge = {
+  fromTopic: string;
+  toTopic: string;
+  relationship: string;
+};
+
+function readEdges(db: PokaicoDb): IndexEdge[] {
+  try {
+    return db
+      .prepare(
+        "SELECT from_topic AS fromTopic, to_topic AS toTopic, relationship FROM edges",
+      )
+      .all() as IndexEdge[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Rebuild INDEX.md from the current topic graph — always overwrites (never
+ * skips on existence, unlike the old lazy `ensureIndex`). Deterministic and
+ * LLM-free: topics come from the filesystem, edges from the `edges` table.
+ * This is the mechanical observer that keeps the routing map fresh (issue #3).
+ */
+export function regenerateIndex(memoryDir: string, db: PokaicoDb): void {
+  const indexPath = join(memoryDir, "INDEX.md");
+  const topics = scanTopics(memoryDir);
+
+  const topicLines = topics.map((t) => `- **${t.topicId}**: ${t.summary || "(no summary)"}`);
+
+  const edges = readEdges(db).filter(
+    (e) =>
+      existsSync(join(memoryDir, "topics", e.fromTopic)) &&
+      existsSync(join(memoryDir, "topics", e.toTopic)),
+  );
+  const edgeLines = edges.map(
+    (e) => `- ${e.fromTopic} → ${e.toTopic}: ${e.relationship}`,
+  );
+
+  const sections = [`# Memory Index`, ""];
+  sections.push(...(topicLines.length > 0 ? topicLines : ["_(no topics yet)_"]));
+  if (edgeLines.length > 0) {
+    sections.push("", "## Edges", ...edgeLines);
+  }
+  sections.push("");
+
+  writeFileSync(indexPath, sections.join("\n"), "utf-8");
 }

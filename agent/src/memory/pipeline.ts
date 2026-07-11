@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { LanguageModelV1 } from "ai";
 import type { PokaicoDb } from "../db/client";
 import { readSession } from "./journal";
-import { readTopic, updateTopic } from "./topics";
+import { readTopic, updateTopic, regenerateIndex } from "./topics";
 import { hasNewMessages, updatePointer } from "./guards";
 import { summarize as defaultSummarize } from "./summarizer";
 import { refreshFoundational as defaultRefresh } from "./foundational";
@@ -311,6 +311,11 @@ export async function processSession(
   if (writtenTopics.length >= 2) {
     linkCoOccurring(db, writtenTopics);
   }
+
+  // Step6c (observer): rebuild INDEX.md from the current topic graph so the
+  // routing map stays fresh after every extraction (issue #3). Deterministic,
+  // LLM-free — runs after all edges/resources are recorded above.
+  regenerateIndex(memoryDir, db);
 
   // Step 7: Update pointer (do this BEFORE marking journal as extracted)
   // If this fails, the journal stays extracted:false and will be re-processed safely

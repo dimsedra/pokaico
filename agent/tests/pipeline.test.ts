@@ -364,6 +364,46 @@ describe("pipeline E2E", () => {
     // Touching 2 topics in one session writes cross-link edges
     const edgeCount = db.prepare("SELECT COUNT(*) c FROM edges").get() as { c: number };
     expect(edgeCount.c).toBe(2); // one unordered pair, bidirectional
+
+    // Observer must rebuild INDEX.md from the graph (issue #3)
+    const indexContent = readFileSync(join(memoryDir, "INDEX.md"), "utf-8");
+    expect(indexContent).toContain(result.changes[0].topicId);
+    expect(indexContent).toContain(result.changes[1].topicId);
+    expect(indexContent).toContain("## Edges");
+  });
+
+  it("rebuilds INDEX.md via the mechanical observer after extraction", async () => {
+    const sessionId = "index-observer";
+    const startedAt = "2026-07-08T21:00:00+07:00";
+    makeJournal(journalDir, sessionId, startedAt, [
+      { ts: "21:00:00", role: "User", content: "I started learning watercolor painting." },
+      { ts: "21:00:15", role: "Pokai", content: "Nice! How's it going?" },
+    ]);
+
+    mockSummarize.mockResolvedValue({
+      summary: "User is learning watercolor painting.",
+      keyPoints: ["Learning watercolor"],
+      topics: [
+        { title: "watercolor painting", summary: "User is learning watercolor.", keyPoints: ["Learning watercolor"] },
+      ],
+    });
+    mockRefresh.mockResolvedValue([]);
+
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexTopic = vi.fn().mockResolvedValue(undefined);
+    const mockLlm = {} as never;
+
+    await processSession(sessionId, {
+      llm: mockLlm,
+      searchSimilar,
+      indexTopic,
+      db,
+      memoryDir,
+      journalDir,
+    });
+
+    const indexPath = join(memoryDir, "INDEX.md");
+    expect(readFileSync(indexPath, "utf-8")).toContain("watercolor");
   });
 
   it("records overflow resource + suggested edge on an update", async () => {

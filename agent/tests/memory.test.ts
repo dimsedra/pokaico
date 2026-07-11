@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { mkdtempSync, readFileSync, existsSync, rmSync, mkdirSync } from "node:fs";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync, readFileSync, existsSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
 
 import {
   createTopic,
@@ -10,12 +11,20 @@ import {
   listTopics,
   deleteTopic,
   ensureIndex,
+  regenerateIndex,
 } from "../src/memory/topics";
 
 let tmpDir: string;
+let db: PokaicoDb;
 
 beforeAll(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "pokaico-memory-test-"));
+  db = createDb(join(tmpDir, "test.db"));
+});
+
+afterAll(() => {
+  closeDb(db);
+  rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe("createTopic", () => {
@@ -112,6 +121,75 @@ describe("ensureIndex", () => {
     expect(indexContent).toContain("First topic");
     expect(indexContent).toContain("two");
     expect(indexContent).toContain("Second topic");
+  });
+});
+
+describe("regenerateIndex (issue #3 — mechanical observer)", () => {
+  it("rebuilds INDEX.md from topics + edges, overwriting stale content", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-regen-"));
+    createTopic(dir, "cycling", "Daily bike commute to work.");
+    createTopic(dir, "fitness", "User's fitness goals and routines.");
+
+    // Seed topic rows (FK targets) + a stale edge the observer must surface.
+    db.prepare(
+      "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
+    ).run("cycling", "memory/topics/cycling/CONTEXT.md");
+    db.prepare(
+      "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
+    ).run("fitness", "memory/topics/fitness/CONTEXT.md");
+    db.prepare(
+      "INSERT INTO edges(from_topic, to_topic, relationship) VALUES (?, ?, ?)",
+    ).run("cycling", "fitness", "related-to");
+
+    // Pretend a previous (stale) INDEX.md exists.
+    writeFileSync(join(dir, "INDEX.md"), "# Memory Index\n\n- **old-stale-topic**: gone\n", "utf-8");
+
+    regenerateIndex(dir, db);
+
+    const content = readFileSync(join(dir, "INDEX.md"), "utf-8");
+    expect(content).toContain("cycling");
+    expect(content).toContain("Daily bike commute to work.");
+    expect(content).toContain("fitness");
+    expect(content).toContain("## Edges");
+    expect(content).toContain("cycling → fitness: related-to");
+    // Stale entry must be gone.
+    expect(content).not.toContain("old-stale-topic");
+  });
+
+  it("is idempotent — two regenerations yield identical content", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-regen-idem-"));
+    createTopic(dir, "work", "Work schedule and projects.");
+
+    regenerateIndex(dir, db);
+    const first = readFileSync(join(dir, "INDEX.md"), "utf-8");
+    regenerateIndex(dir, db);
+    const second = readFileSync(join(dir, "INDEX.md"), "utf-8");
+
+    expect(second).toBe(first);
+  });
+
+  it("drops edges whose endpoint topic no longer exists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-regen-edge-"));
+    createTopic(dir, "a", "Topic A.");
+    db.prepare(
+      "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
+    ).run("a", "memory/topics/a/CONTEXT.md");
+    // Topic "b" exists in DB (FK holds) but has NO topic directory,
+    // so the observer must drop the dangling edge (a → b).
+    db.prepare(
+      "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
+    ).run("b", "memory/topics/b/CONTEXT.md");
+    db.prepare(
+      "INSERT INTO edges(from_topic, to_topic, relationship) VALUES (?, ?, ?)",
+    ).run("a", "b", "related-to");
+    // Directory for "b" intentionally absent (only "a" was created via createTopic).
+
+    regenerateIndex(dir, db);
+
+    const content = readFileSync(join(dir, "INDEX.md"), "utf-8");
+    expect(content).toContain("a");
+    expect(content).not.toContain("a → b");
+    expect(content).not.toContain("## Edges");
   });
 });
 
