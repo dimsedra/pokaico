@@ -23,6 +23,8 @@ export type TopicChange = {
   content: string;
   similarityScore?: number;
   resourceFile?: string;
+  overflow?: CompactOverflow[];
+  edges?: CompactEdge[];
 };
 
 export type CompactOverflow = {

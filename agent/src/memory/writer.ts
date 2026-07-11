@@ -108,21 +108,17 @@ export async function applyChanges(
         return;
       }
 
-      // action === "update"
+      // action === "update" — content is already compacted upstream; replace file.
       const cp = contextPath(memoryDir, change.topicId);
-      if (existsSync(cp)) {
-        const existing = readFileSync(cp, "utf-8");
+      ensureDir(topicDir(memoryDir, change.topicId));
+      writeFileSync(cp, change.content, "utf-8");
 
-        if (sessionId !== undefined && timestamp !== undefined) {
-          if (hasProvenance(existing, sessionId, timestamp)) {
-            return;
-          }
+      if (change.overflow && change.overflow.length > 0) {
+        const rd = resourcesDir(memoryDir, change.topicId);
+        ensureDir(rd);
+        for (const o of change.overflow) {
+          writeFileSync(join(rd, o.filename), o.content, "utf-8");
         }
-
-        writeFileSync(cp, mergeExisting(existing, entry), "utf-8");
-      } else {
-        ensureDir(topicDir(memoryDir, change.topicId));
-        writeFileSync(cp, entry, "utf-8");
       }
 
       updated.push(change.topicId);

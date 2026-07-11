@@ -11,7 +11,21 @@ import { extractTopics } from "./extract";
 import { applyChanges } from "./writer";
 import { reindexTopics } from "./reindexer";
 import { createMutex } from "./mutex";
-import type { SummaryOutput, FoundationalUpdate, PipelineResult } from "./types";
+import { compact as defaultCompact } from "./compactor";
+import { CONTEXT_CAP, FOUNDATIONAL_CAP } from "./tokens";
+import type {
+  SummaryOutput,
+  FoundationalUpdate,
+  PipelineResult,
+  CompactResult,
+  TopicChange,
+} from "./types";
+
+export type CompactFn = (input: {
+  current: string;
+  newInfo: string;
+  cap: number;
+}) => Promise<CompactResult>;
 
 const withSessionLock = createMutex();
 
@@ -22,6 +36,7 @@ export type PipelineDeps = {
   db: PokaicoDb;
   memoryDir: string;
   journalDir: string;
+  compact?: CompactFn;
 };
 
 type SearchResult = {
@@ -102,10 +117,6 @@ function markJournalExtracted(filePath: string): void {
   writeFileSync(filePath, `${before}${updatedFm}${after}`, "utf-8");
 }
 
-function truncate(content: string, max: number): string {
-  return content.length > max ? content.slice(0, max) + "..." : content;
-}
-
 const RETRY_COUNT = 1;
 
 async function withRetry<T>(
@@ -132,6 +143,9 @@ export async function processSession(
 ): Promise<PipelineResult> {
   return withSessionLock(sessionId, async () => {
   const { llm, searchSimilar, indexTopic, db, memoryDir, journalDir } = deps;
+  const compact: CompactFn =
+    deps.compact ??
+    ((input) => defaultCompact({ ...input, model: llm }));
 
   const fullPath = findJournalFile(journalDir, sessionId);
   if (!fullPath) {
@@ -194,7 +208,7 @@ export async function processSession(
   try {
     const foundationalTopics = FOUNDATIONAL_TOPIC_IDS.map((topicId) => ({
       topicId,
-      currentContent: truncate(readTopic(memoryDir, topicId) ?? "", 700),
+      currentContent: readTopic(memoryDir, topicId) ?? "",
     }));
     updates = await withRetry("refreshFoundational", () =>
       defaultRefresh(summary, foundationalTopics, llm),
@@ -217,14 +231,52 @@ export async function processSession(
 
   const changes = await extractTopics(summary, existingMeta, searchSimilar);
 
-  // Step 5: Write phase
-  const writtenTopics = await applyChanges(changes, memoryDir, sessionId, latestTs);
+  // Compact update-changes before writing: LLM condenses current + new info
+  // into the token cap (runs BEFORE acquiring per-topic write locks).
+  const resolvedChanges: TopicChange[] = [];
+  for (const change of changes) {
+    if (change.action === "update") {
+      try {
+        const current = readTopic(memoryDir, change.topicId) ?? "";
+        const result = await compact({
+          current,
+          newInfo: change.content,
+          cap: CONTEXT_CAP,
+        });
+        resolvedChanges.push({
+          ...change,
+          content: result.context,
+          overflow: result.overflow,
+          edges: result.edges,
+        });
+      } catch {
+        // Compaction failed — fall back to writing the raw new info.
+        resolvedChanges.push(change);
+      }
+    } else {
+      resolvedChanges.push(change);
+    }
+  }
 
-  // Apply foundational updates
+  // Step 5: Write phase
+  const writtenTopics = await applyChanges(resolvedChanges, memoryDir, sessionId, latestTs);
+
+  // Apply foundational updates — condense to the foundational cap.
   const foundationalUpdated: string[] = [];
   for (const update of updates) {
     if (update.newContent !== null) {
-      updateTopic(memoryDir, update.topicId, update.newContent);
+      let content = update.newContent;
+      try {
+        const result = await compact({
+          current: "",
+          newInfo: update.newContent,
+          cap: FOUNDATIONAL_CAP,
+        });
+        content = result.context;
+      } catch {
+        // Condensation failed — write the un-condensed content.
+      }
+      updateTopic(memoryDir, update.topicId, content);
       foundationalUpdated.push(update.topicId);
     }
   }

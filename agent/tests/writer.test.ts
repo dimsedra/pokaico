@@ -30,20 +30,44 @@ describe("writer", () => {
     expect(readFileSync(contextPath, "utf-8")).toContain("User loves hiking.");
   });
 
-  it("updates existing topic content by appending", async () => {
+  it("replaces existing topic content on update (content is compacted upstream)", async () => {
     const topicDir = join(memoryDir(), "topics", "work");
     mkdirSync(topicDir, { recursive: true });
     writeFileSync(join(topicDir, "CONTEXT.md"), "Old content.", "utf-8");
 
     const changes: TopicChange[] = [
-      { topicId: "work", action: "update", content: "New work content." },
+      { topicId: "work", action: "update", content: "Compacted work content." },
     ];
 
     const updated = await applyChanges(changes, memoryDir());
     expect(updated).toContain("work");
     const content = readFileSync(join(topicDir, "CONTEXT.md"), "utf-8");
-    expect(content).toContain("New work content.");
-    expect(content).toContain("Old content.");
+    expect(content).toBe("Compacted work content.");
+  });
+
+  it("writes overflow to resources/ on update", async () => {
+    const topicDir = join(memoryDir(), "topics", "proj");
+    mkdirSync(topicDir, { recursive: true });
+    writeFileSync(join(topicDir, "CONTEXT.md"), "Old.", "utf-8");
+
+    const changes: TopicChange[] = [
+      {
+        topicId: "proj",
+        action: "update",
+        content: "High-level summary. See [notes](resources/proj-details.md).",
+        overflow: [
+          { filename: "proj-details.md", content: "Long detail.", relationship: "has-detailed-notes" },
+        ],
+      },
+    ];
+
+    await applyChanges(changes, memoryDir());
+
+    const context = readFileSync(join(topicDir, "CONTEXT.md"), "utf-8");
+    expect(context).toContain("See [notes](resources/proj-details.md)");
+
+    const resource = readFileSync(join(topicDir, "resources", "proj-details.md"), "utf-8");
+    expect(resource).toBe("Long detail.");
   });
 
   it("includes provenance markers in content", async () => {
@@ -102,29 +126,7 @@ describe("writer", () => {
     ).toBe(true);
   });
 
-  it("does not duplicate content with same provenance", async () => {
-    const topicId = "dedup-test";
-    const changes1: TopicChange[] = [
-      { topicId, action: "create", content: "First content." },
-    ];
-
-    await applyChanges(changes1, memoryDir(), "session-1", 100);
-
-    const changes2: TopicChange[] = [
-      { topicId, action: "update", content: "Duplicated content." },
-    ];
-    await applyChanges(changes2, memoryDir(), "session-1", 100);
-
-    const content = readFileSync(
-      join(memoryDir(), "topics", "dedup-test", "CONTEXT.md"),
-      "utf-8",
-    );
-
-    // "Duplicated content." should NOT appear
-    expect(content).not.toContain("Duplicated content.");
-  });
-
-  it("accumulates multiple updates without truncation", async () => {
+  it("update replaces rather than accumulates (idempotency handled by session_pointers)", async () => {
     const topicId = "growing";
     await applyChanges(
       [{ topicId, action: "create", content: "First." }],
@@ -133,7 +135,7 @@ describe("writer", () => {
 
     for (let i = 2; i <= 20; i++) {
       await applyChanges(
-        [{ topicId, action: "update", content: `Update ${i}.` }],
+        [{ topicId, action: "update", content: `Compacted state ${i}.` }],
         memoryDir(), `s${i}`, i,
       );
     }
@@ -143,11 +145,11 @@ describe("writer", () => {
       "utf-8",
     );
 
-    expect(content).toContain("First.");
-    expect(content).toContain("Update 10.");
-    expect(content).toContain("Update 20.");
+    // Only the latest compacted state remains — no unbounded growth.
+    expect(content).toBe("Compacted state 20.");
+    expect(content).not.toContain("First.");
 
-    // No overflow to resources for regular updates
+    // No overflow to resources when none provided.
     const rd = join(memoryDir(), "topics", "growing", "resources");
     expect(existsSync(rd)).toBe(false);
   });

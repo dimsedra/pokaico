@@ -170,6 +170,7 @@ describe("pipeline E2E", () => {
     const searchSimilar = vi.fn().mockResolvedValue([]);
     const indexTopic = vi.fn().mockResolvedValue(undefined);
     const mockLlm = {} as never;
+    const compact = vi.fn(async ({ newInfo }) => ({ context: newInfo, overflow: [], edges: [] }));
 
     const result = await processSession(sessionId, {
       llm: mockLlm,
@@ -178,6 +179,7 @@ describe("pipeline E2E", () => {
       db,
       memoryDir,
       journalDir,
+      compact,
     });
 
     expect(result.updates).toHaveLength(1);
