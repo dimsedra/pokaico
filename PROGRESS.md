@@ -117,12 +117,23 @@ Tracking issues:
 
 **Urutan eksekusi (disepakati): 3 → 4 → 2 → 1.** Gardening = knowledge-graph UI v0.2+, di luar scope v0.1.
 
+### Reopened — Foundational topics konsolidasi [#7](https://github.com/dimsedra/pokaico/issues/7)
+
+**Reason:** Menyediakan slot untuk `user-patterns` (trigger skill creation v0.2). `user-communication` di-merge ke `user-profile`, konten tidak hilang — hanya 3 topik jadi:
+
+- [ ] `user-profile` (merged: personality + communication preferences + triggers + values)
+- [ ] `user-background` (tetap: bio + lokasi + pekerjaan + karir)
+- [ ] `user-patterns` (baru: pola berulang untuk trigger skill creation)
+
+**Blocker Phase 4:** Issue #7 harus selesai sebelum Group A Phase 4 bisa dimulai.
+
 ---
 
 ## Phase 4: Mastra Agent + Retrieval Tools + IPC [ ]
 
 **Scope:** Mastra conversational agent, 6 retrieval tools as Mastra tools, system prompt with INDEX-primary routing, native Tauri IPC bridge.
 **Arsitektur komunikasi:** Frontend ↔ Tauri Rust command ↔ stdin/stdout ↔ Node sidecar. Native IPC sejak awal agar tak perlu migrasi di v0.2.
+**⚠️ Blocker:** Issue [#7](https://github.com/dimsedra/pokaico/issues/7) (Foundational topics konsolidasi) harus selesai sebelum Group A dimulai.
 
 **Urutan task (sequential, no backtrack):**
 

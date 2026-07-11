@@ -433,3 +433,22 @@ src/themes/
 ```
 
 Each file overrides only the `--color-*` variables. The pixel/shape tokens stay in `src/styles/variables.css` as theme-independent.
+
+---
+
+## 13. Agentic Capabilities (v0.2+)
+
+> 📝 Bagian ini akan diperinci setelah v0.1 dirilis dan real usage testing selesai.
+
+Kemampuan agentik yang direncanakan untuk v0.2:
+
+- **Skill Creation:** Agent dapat membuat SKILL.md baru secara dinamis — baik atas permintaan eksplisit user maupun deteksi pola otonom dari `user-patterns` foundational topic. Skill disimpan di `memory/skills/<nama>/SKILL.md` dan terdaftar di registry yang di-inject ke system prompt agent.
+- **Sandboxed Code Execution:** Eksekusi kode Python/JS dalam lingkungan terbatas (dengan persetujuan user).
+- **Terminal Access:** Akses shell dengan izin eksplisit user per-sesi.
+
+Fitur ini akan menggunakan `user-patterns` foundational topic untuk mendeteksi pola permintaan berulang dan memicu proposal skill creation secara proaktif.
+
+### v0.3+ (Future)
+
+- Deep Research agent
+- Note-taking & knowledge management features
