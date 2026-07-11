@@ -13,7 +13,7 @@ import { reindexTopics } from "./reindexer";
 import { createMutex } from "./mutex";
 import { compact as defaultCompact } from "./compactor";
 import { CONTEXT_CAP, FOUNDATIONAL_CAP } from "./tokens";
-import { writeEdge, writeResource } from "./edges";
+import { writeEdge, writeResource, getEdges } from "./edges";
 import type {
   SummaryOutput,
   FoundationalUpdate,
@@ -54,7 +54,7 @@ type TopicRow = {
   updated_at: number;
 };
 
-const FOUNDATIONAL_TOPIC_IDS = ["user-profile", "user-background", "user-patterns"];
+export const FOUNDATIONAL_TOPIC_IDS = ["user-profile", "user-background", "user-patterns"];
 const JOURNAL_FILE_RE = /^\d{4}-\d{2}-\d{2}-(.+)\.md$/;
 
 function parseUnixTimestamp(startedAt: string, hhMmSs: string): number {
@@ -148,6 +148,19 @@ export async function processSession(
     deps.compact ??
     ((input) => defaultCompact({ ...input, model: llm }));
 
+  // Defensive: reject sessionIds that could inject prompt-breaking characters
+  if (!/^[\w][\w-]{0,80}$/.test(sessionId)) {
+    return {
+      sessionId,
+      hasNewMessages: false,
+      summary: null,
+      updates: [],
+      changes: [],
+      reindexed: [],
+      error: `Invalid sessionId format: "${sessionId}"`,
+    };
+  }
+
   const fullPath = findJournalFile(journalDir, sessionId);
   if (!fullPath) {
     return {
@@ -215,7 +228,7 @@ export async function processSession(
       defaultRefresh(summary, foundationalTopics, llm, sessionId),
     );
   } catch (err) {
-    // Non-fatal: log and continue
+    console.error("[pokaico] refreshFoundational failed:", err);
   }
 
   // Step 4: Extract topics (similarity-gated)
@@ -250,12 +263,20 @@ export async function processSession(
     if (change.action === "update") {
       try {
         const current = readTopic(memoryDir, change.topicId) ?? "";
+        // Merge DB edges with current session's edges — prefer session edges on conflict.
+        const dbEdges = getEdges(db, change.topicId);
+        const mergedEdges = [...(change.edges ?? [])];
+        for (const dbEdge of dbEdges) {
+          if (!mergedEdges.some((e) => e.toTopic === dbEdge.toTopic && e.relationship === dbEdge.relationship)) {
+            mergedEdges.push(dbEdge);
+          }
+        }
         const result = await compact({
           current,
           newInfo: change.content,
           cap: CONTEXT_CAP,
           model: llm as never,
-          existingEdges: change.edges,
+          existingEdges: mergedEdges,
         });
         resolvedChanges.push({
           ...change,

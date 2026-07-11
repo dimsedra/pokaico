@@ -25,6 +25,7 @@ vi.mock("../src/memory/topics", async (importOriginal) => {
 });
 
 import { processSession } from "../src/memory/pipeline";
+import { FOUNDATIONAL_TOPIC_IDS } from "../src/memory/pipeline";
 import { summarize } from "../src/memory/summarizer";
 import { refreshFoundational } from "../src/memory/foundational";
 
@@ -59,6 +60,11 @@ describe("pipeline E2E", () => {
   let dir: string;
   let journalDir: string;
   let memoryDir: string;
+
+  it("FOUNDATIONAL_TOPIC_IDS has the correct 3 topics and no user-communication", () => {
+    expect(FOUNDATIONAL_TOPIC_IDS).toEqual(["user-profile", "user-background", "user-patterns"]);
+    expect(FOUNDATIONAL_TOPIC_IDS).not.toContain("user-communication");
+  });
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "pipeline-test-"));

@@ -211,15 +211,29 @@ export async function extractTopics(
       const toId = segmentTopicIds[r.topicIndex];
       if (!fromId || !toId || fromId === toId) continue;
 
-      // Add edge on the from side
+      // Add edge on the from side — concatenate reasons if same edge with different reason
       const fromEdges = edgeMap.get(fromId) ?? [];
-      if (!fromEdges.some((e) => e.toTopic === toId)) {
+      const fromExisting = fromEdges.find((e) => e.toTopic === toId);
+      if (fromExisting) {
+        if (fromExisting.reason !== r.reason) {
+          fromExisting.reason = fromExisting.reason
+            ? `${fromExisting.reason}; ${r.reason}`
+            : r.reason;
+        }
+      } else {
         fromEdges.push({ toTopic: toId, relationship: "related-to", reason: r.reason });
         edgeMap.set(fromId, fromEdges);
       }
       // Always bidirectional
       const toEdges = edgeMap.get(toId) ?? [];
-      if (!toEdges.some((e) => e.toTopic === fromId)) {
+      const toExisting = toEdges.find((e) => e.toTopic === fromId);
+      if (toExisting) {
+        if (toExisting.reason !== r.reason) {
+          toExisting.reason = toExisting.reason
+            ? `${toExisting.reason}; ${r.reason}`
+            : r.reason;
+        }
+      } else {
         toEdges.push({ toTopic: fromId, relationship: "related-to", reason: r.reason });
         edgeMap.set(toId, toEdges);
       }
