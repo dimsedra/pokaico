@@ -13,6 +13,7 @@ import { reindexTopics } from "./reindexer";
 import { createMutex } from "./mutex";
 import { compact as defaultCompact } from "./compactor";
 import { CONTEXT_CAP, FOUNDATIONAL_CAP } from "./tokens";
+import { writeEdge, writeResource, linkCoOccurring } from "./edges";
 import type {
   SummaryOutput,
   FoundationalUpdate,
@@ -283,9 +284,32 @@ export async function processSession(
 
   const allUpdated = [...new Set([...writtenTopics, ...foundationalUpdated])];
 
-  // Step 6: Re-index
+  // Step 6: Re-index (also upserts topic rows, needed before edges/resources FK)
   if (allUpdated.length > 0) {
     await reindexTopics(allUpdated, memoryDir, db, indexTopic);
+  }
+
+  // Step 6b: Record graph — overflow resources, suggested edges, and
+  // cross-links when a session touches 2+ topics (SPEC §6.5-6.6).
+  for (const change of resolvedChanges) {
+    if (change.overflow) {
+      for (const o of change.overflow) {
+        writeResource(
+          db,
+          change.topicId,
+          `memory/topics/${change.topicId}/resources/${o.filename}`,
+          "md",
+        );
+      }
+    }
+    if (change.edges) {
+      for (const e of change.edges) {
+        writeEdge(db, change.topicId, e.toTopic, e.relationship);
+      }
+    }
+  }
+  if (writtenTopics.length >= 2) {
+    linkCoOccurring(db, writtenTopics);
   }
 
   // Step 7: Update pointer (do this BEFORE marking journal as extracted)

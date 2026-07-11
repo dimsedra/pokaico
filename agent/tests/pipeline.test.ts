@@ -360,5 +360,71 @@ describe("pipeline E2E", () => {
     // Both should be reindexed
     expect(result.reindexed).toHaveLength(2);
     expect(indexTopic).toHaveBeenCalledTimes(2);
+
+    // Touching 2 topics in one session writes cross-link edges
+    const edgeCount = db.prepare("SELECT COUNT(*) c FROM edges").get() as { c: number };
+    expect(edgeCount.c).toBe(2); // one unordered pair, bidirectional
+  });
+
+  it("records overflow resource + suggested edge on an update", async () => {
+    const sessionId = "overflow-run";
+    const startedAt = "2026-07-08T20:00:00+07:00";
+    makeJournal(journalDir, sessionId, startedAt, [
+      { ts: "20:00:00", role: "User", content: "More detail about my big project." },
+    ]);
+
+    // Seed an existing episodic topic + a related topic the LLM can link to
+    const projDir = join(memoryDir, "topics", "big-project");
+    mkdirSync(projDir, { recursive: true });
+    writeFileSync(join(projDir, "CONTEXT.md"), "Project overview.", "utf-8");
+    db.prepare(
+      "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
+    ).run("big-project", "memory/topics/big-project/CONTEXT.md");
+    db.prepare(
+      "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
+    ).run("work-life", "memory/topics/work-life/CONTEXT.md");
+
+    mockSummarize.mockResolvedValue({
+      summary: "More project detail.",
+      keyPoints: ["detail"],
+      topics: [{ title: "big project", summary: "More project detail.", keyPoints: ["detail"] }],
+    });
+    mockRefresh.mockResolvedValue([]);
+
+    // searchSimilar matches the existing topic so this becomes an update
+    const searchSimilar = vi.fn().mockResolvedValue([
+      { topicId: "big-project", score: 0.9, content: "Project overview.", sourcePath: "" },
+    ]);
+    const indexTopic = vi.fn().mockResolvedValue(undefined);
+    const mockLlm = {} as never;
+    const compact = vi.fn(async () => ({
+      context: "Lean project summary. See [notes](resources/project-details.md).",
+      overflow: [
+        { filename: "project-details.md", content: "Long detail.", relationship: "has-detailed-notes" },
+      ],
+      edges: [{ toTopic: "work-life", relationship: "related-to" }],
+    }));
+
+    const result = await processSession(sessionId, {
+      llm: mockLlm,
+      searchSimilar,
+      indexTopic,
+      db,
+      memoryDir,
+      journalDir,
+      compact,
+    });
+
+    expect(result.changes[0].action).toBe("update");
+
+    const resource = db
+      .prepare("SELECT topic_id FROM resources WHERE path = ?")
+      .get("memory/topics/big-project/resources/project-details.md") as { topic_id: string };
+    expect(resource.topic_id).toBe("big-project");
+
+    const edge = db
+      .prepare("SELECT relationship FROM edges WHERE from_topic = ? AND to_topic = ?")
+      .get("big-project", "work-life") as { relationship: string };
+    expect(edge.relationship).toBe("related-to");
   });
 });
