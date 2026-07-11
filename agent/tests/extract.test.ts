@@ -211,4 +211,63 @@ describe("extractTopics", () => {
     expect(result[0].topicId).toBe("hiking-hobby");
     expect(searchSimilar).not.toHaveBeenCalled();
   });
+
+  it("updates deterministically in the single-segment (old-style) path", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const oldStyle = {
+      summary: "Bike purchase details",
+      keyPoints: ["hiking-hobby"], // used as the single-segment title
+      topics: [],
+    };
+    const indexSlugs = new Set(["hiking-hobby"]);
+
+    const result = await extractTopics(oldStyle, [], searchSimilar, indexSlugs);
+    expect(result).toHaveLength(1);
+    expect(result[0].action).toBe("update");
+    expect(result[0].topicId).toBe("hiking-hobby");
+    expect(result[0].similarityScore).toBe(1);
+    expect(searchSimilar).not.toHaveBeenCalled();
+  });
+
+  it("INDEX slug wins over a conflicting high-score embedding match (primacy)", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([
+      { topicId: "unrelated", score: 0.95, content: "Different topic", sourcePath: "" },
+    ]);
+    const indexSlugs = new Set(["hiking-hobby"]);
+
+    const result = await extractTopics(summary, [], searchSimilar, indexSlugs);
+    expect(result[0].action).toBe("update");
+    expect(result[0].topicId).toBe("hiking-hobby");
+    expect(searchSimilar).not.toHaveBeenCalled();
+  });
+
+  it("routes to a collision-suffixed sibling instead of duplicating", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    // The existing topic was created as "bike-purchase-1" via collision avoidance.
+    const indexSlugs = new Set(["bike-purchase-1"]);
+    const bikeSummary = {
+      summary: "User bought a new bike.",
+      keyPoints: ["Bike purchase"],
+      topics: [
+        { title: "Bike Purchase", summary: "User bought a new bike.", keyPoints: ["New bike"] },
+      ],
+    };
+
+    const result = await extractTopics(bikeSummary, [], searchSimilar, indexSlugs);
+    expect(result[0].action).toBe("update");
+    expect(result[0].topicId).toBe("bike-purchase-1");
+    expect(searchSimilar).not.toHaveBeenCalled();
+  });
+
+  it("never updates a foundational slug even if present in indexSlugs", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexSlugs = new Set(["user-profile"]);
+    const existingTopics: TopicMeta[] = [
+      { topicId: "user-profile", summary: "", isFoundational: true, updatedAt: 0 },
+    ];
+
+    const result = await extractTopics(summary, existingTopics, searchSimilar, indexSlugs);
+    expect(result[0].action).toBe("create");
+    expect(result[0].topicId).not.toBe("user-profile");
+  });
 });

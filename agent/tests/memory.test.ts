@@ -229,6 +229,34 @@ describe("parseIndex (issue #4 — read routing map before create)", () => {
     const dir = mkdtempSync(join(tmpdir(), "pokaico-parse-empty-"));
     expect(parseIndex(dir)).toEqual([]);
   });
+
+  it("returns [] for the empty-placeholder INDEX.md", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-parse-placeholder-"));
+    writeFileSync(join(dir, "INDEX.md"), "# Memory Index\n\n_(no topics yet)_\n", "utf-8");
+    expect(parseIndex(dir)).toEqual([]);
+  });
+
+  it("round-trips with regenerateIndex (writer ⇄ reader, edges excluded)", () => {
+    db.prepare("DELETE FROM edges").run();
+    db.prepare("DELETE FROM topics").run();
+
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-parse-roundtrip-"));
+    createTopic(dir, "a", "Topic A.");
+    createTopic(dir, "b", "Topic B.");
+    createTopic(dir, "c", "Topic C.");
+    for (const id of ["a", "b", "c"]) {
+      db.prepare(
+        "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
+      ).run(id, `memory/topics/${id}/CONTEXT.md`);
+    }
+    db.prepare(
+      "INSERT INTO edges(from_topic, to_topic, relationship) VALUES (?, ?, ?)",
+    ).run("a", "b", "related-to");
+
+    regenerateIndex(dir, db);
+    const parsed = parseIndex(dir).map((t) => t.topicId).sort();
+    expect(parsed).toEqual(["a", "b", "c"]);
+  });
 });
 
 describe("edge cases", () => {

@@ -154,10 +154,13 @@ export function parseIndex(memoryDir: string): IndexTopic[] {
 
   const content = readFileSync(indexPath, "utf-8");
   const topics: IndexTopic[] = [];
-  const re = /^- \*\*(.+?)\*\*:\s*(.*)$/;
+  // Tolerant of hand-edited variants (leading spaces, extra spaces around the
+  // colon) so a stray space in INDEX.md can never silently drop a topic from
+  // the routing map.
+  const re = /^\s*-\s+\*\*(.+?)\*\*\s*:\s*(.*?)\s*$/;
   for (const line of content.split("\n")) {
     const m = re.exec(line);
-    if (m) topics.push({ topicId: m[1], summary: m[2] });
+    if (m) topics.push({ topicId: m[1].trim(), summary: m[2].trim() });
   }
   return topics;
 }

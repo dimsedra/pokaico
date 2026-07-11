@@ -64,11 +64,42 @@ export async function extractTopics(
   // Deterministic authority (issue #4): prefer the canonical routing map
   // (INDEX.md) so we UPDATE an existing slug instead of duplicating it. Fall
   // back to the DB-backed non-foundational slug set when INDEX.md is absent.
+  // Self-guard: never treat a foundational slug as an extraction update target
+  // (those are owned by refreshFoundational) — even if the caller forgot to
+  // filter it out of `indexSlugs`.
+  const foundational = new Set(
+    existingTopics.filter((t) => t.isFoundational).map((t) => t.topicId),
+  );
   const dbNonFoundational = new Set(
     existingTopics.filter((t) => !t.isFoundational).map((t) => t.topicId),
   );
-  const deterministicSlugs =
-    indexSlugs && indexSlugs.size > 0 ? indexSlugs : dbNonFoundational;
+  const deterministicSlugs = new Set(
+    (indexSlugs && indexSlugs.size > 0 ? indexSlugs : dbNonFoundational).values(),
+  );
+  for (const id of foundational) deterministicSlugs.delete(id);
+
+  // Resolve a segment title to an existing topic slug deterministically.
+  // Returns the matched topicId to UPDATE, or null to fall back to embedding.
+  //  - Exact match on the canonical slug → UPDATE (primary, deterministic).
+  //  - Single collision-suffixed sibling (e.g. "bike-purchase" → "bike-purchase-1")
+  //    → UPDATE that sibling (otherwise the next run would duplicate it).
+  //  - Titles longer than 60 chars are truncated by slugify, so two distinct
+  //    long titles can collapse to the same slug; for those we DON'T trust the
+  //    deterministic match and let the embedding ranker decide instead.
+  //  - Multiple ambiguous siblings → fall back to embedding (don't guess).
+  function resolveDeterministic(title: string): string | null {
+    const baseSlug = slugify(title);
+    if (title.length > 60) return null;
+    if (deterministicSlugs.has(baseSlug)) return baseSlug;
+    // Single collision-suffixed sibling (e.g. "bike-purchase" → "bike-purchase-1"),
+    // identified strictly: the id must be exactly `baseSlug-N` with N numeric. A
+    // topic like "hiking-is-a-hobby" is NOT a sibling of "hiking".
+    const siblings = [...deterministicSlugs].filter((id) => {
+      const i = id.lastIndexOf("-");
+      return i > 0 && id.slice(0, i) === baseSlug && /^\d+$/.test(id.slice(i + 1));
+    });
+    return siblings.length === 1 ? siblings[0] : null;
+  }
 
   const segments = Array.isArray(summary.topics) && summary.topics.length > 0
     ? summary.topics
@@ -76,20 +107,21 @@ export async function extractTopics(
 
   if (!segments) {
     const title = summary.keyPoints[0] || summary.summary;
-    const baseSlug = slugify(title);
-    if (deterministicSlugs.has(baseSlug)) {
-      // Exact slug already exists → deterministic UPDATE (no embedding call).
-      return [{ topicId: baseSlug, action: "update", content: summary.summary }];
+    const match = resolveDeterministic(title);
+    if (match) {
+      // Deterministic hit → UPDATE (no embedding call). similarityScore: 1
+      // marks an INDEX/deterministic match, symmetric with the multi-segment path.
+      return [{ topicId: match, action: "update", content: summary.summary, similarityScore: 1 }];
     }
 
     // Fall back to old single-segment behavior
     const results = await searchSimilar(summary.summary, 5);
-    const match = pickExistingTopic(results, existingTopics);
+    const embMatch = pickExistingTopic(results, existingTopics);
 
-    if (match) {
+    if (embMatch) {
       return [
         {
-          topicId: match.topicId,
+          topicId: embMatch.topicId,
           action: "update",
           content: summary.summary,
           similarityScore: match.score,
@@ -115,35 +147,36 @@ export async function extractTopics(
   const newTopics: TopicChange[] = [];
 
   for (const segment of segments) {
-    const baseSlug = slugify(segment.title);
-    if (deterministicSlugs.has(baseSlug)) {
+    const title = segment.title ?? segment.summary ?? "";
+    const match = resolveDeterministic(title);
+    if (match) {
       // Deterministic hit: this segment maps to an existing topic slug → UPDATE.
-      if (matchedTopics.has(baseSlug)) {
-        const prev = matchedTopics.get(baseSlug)!;
-        matchedTopics.set(baseSlug, {
+      if (matchedTopics.has(match)) {
+        const prev = matchedTopics.get(match)!;
+        matchedTopics.set(match, {
           content: `${prev.content}\n\n${segment.summary}`,
           score: Math.max(prev.score, 1),
         });
       } else {
-        matchedTopics.set(baseSlug, { content: segment.summary, score: 1 });
+        matchedTopics.set(match, { content: segment.summary, score: 1 });
       }
       continue;
     }
 
     const results = await searchSimilar(segment.summary, 5);
-    const match = pickExistingTopic(results, existingTopics);
+    const embMatch = pickExistingTopic(results, existingTopics);
 
-    if (match) {
-      if (matchedTopics.has(match.topicId)) {
-        const prev = matchedTopics.get(match.topicId)!;
-        matchedTopics.set(match.topicId, {
+    if (embMatch) {
+      if (matchedTopics.has(embMatch.topicId)) {
+        const prev = matchedTopics.get(embMatch.topicId)!;
+        matchedTopics.set(embMatch.topicId, {
           content: `${prev.content}\n\n${segment.summary}`,
-          score: Math.max(prev.score, match.score),
+          score: Math.max(prev.score, embMatch.score),
         });
       } else {
-        matchedTopics.set(match.topicId, {
+        matchedTopics.set(embMatch.topicId, {
           content: segment.summary,
-          score: match.score,
+          score: embMatch.score,
         });
       }
     } else {
