@@ -3,7 +3,6 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "nod
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createDb, closeDb, type PokaicoDb } from "../../src/db/client";
-import { hasNewMessages, updatePointer } from "../../src/memory/guards";
 
 vi.mock("../../src/memory/summarizer", () => ({
   summarize: vi.fn(),
@@ -102,7 +101,7 @@ describe("E2: started_at changed without new turns", () => {
       join(memoryDir, "topics", "python-programming-interest", "CONTEXT.md"),
       "utf-8",
     );
-    console.log("E2 first write:", topicContent1.slice(0, 100));
+    expect(topicContent1).toContain("User loves Python");
 
     // Now SIMULATE: change started_at from July 9 to July 10 (same turns)
     // Recreate journal with new date
@@ -128,26 +127,17 @@ describe("E2: started_at changed without new turns", () => {
       journalDir,
     });
 
-    console.log("E2 second extraction hasNewMessages:", result2.hasNewMessages);
-    console.log("E2 second extraction changes:", JSON.stringify(result2.changes));
+    // A changed started_at yields a new latest timestamp, so the guard treats
+    // it as new messages and re-processes.
+    expect(result2.hasNewMessages).toBe(true);
 
-    // Check if content was duplicated
+    // The original topic file must NOT accumulate a duplicate copy of the same fact.
     const topicContent2 = readFileSync(
       join(memoryDir, "topics", "python-programming-interest", "CONTEXT.md"),
       "utf-8",
     );
-
     const occurrences = (topicContent2.match(/User loves Python/g) || []).length;
-    console.log("E2 'User loves Python' occurrences:", occurrences);
-    console.log("E2 final content length:", topicContent2.length);
-
-    if (result2.hasNewMessages && occurrences >= 2) {
-      console.log("E2 VERDICT: BUG CONFIRMED — duplicate content, pointer inflated");
-    } else if (!result2.hasNewMessages) {
-      console.log("E2 VERDICT: PASS — guard correctly skipped (unexpected but correct)");
-    } else if (occurrences === 1) {
-      console.log("E2 VERDICT: PASS — dedup prevented duplication");
-    }
+    expect(occurrences).toBe(1);
   });
 });
 
@@ -202,14 +192,9 @@ describe("E5: Rapid double processSession", () => {
       processSession(sessionId, deps),
     ]);
 
-    console.log("E5 r1 hasNewMessages:", r1.hasNewMessages);
-    console.log("E5 r2 hasNewMessages:", r2.hasNewMessages);
-    console.log("E5 LLM calls:", mockSummarize.mock.calls.length);
-
-    if (mockSummarize.mock.calls.length === 1) {
-      console.log("E5 VERDICT: FIX VERIFIED — only 1 LLM call, session mutex works");
-    } else {
-      console.log("E5 VERDICT: STILL BUGGY —", mockSummarize.mock.calls.length, "LLM calls");
-    }
+    // The session mutex serializes the two concurrent calls: exactly one does
+    // the work, the second sees no new messages.
+    expect(mockSummarize.mock.calls.length).toBe(1);
+    expect([r1.hasNewMessages, r2.hasNewMessages].filter(Boolean)).toHaveLength(1);
   });
 });

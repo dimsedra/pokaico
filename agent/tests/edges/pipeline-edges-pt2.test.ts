@@ -23,7 +23,7 @@ vi.mock("../../src/memory/guards", async () => {
 import { processSession } from "../../src/memory/pipeline";
 import { summarize } from "../../src/memory/summarizer";
 import { refreshFoundational } from "../../src/memory/foundational";
-import { updatePointer, hasNewMessages } from "../../src/memory/guards";
+import { updatePointer } from "../../src/memory/guards";
 
 const mockSummarize = vi.mocked(summarize);
 const mockRefresh = vi.mocked(refreshFoundational);
@@ -86,37 +86,30 @@ Response.`,
     const indexTopic = vi.fn().mockResolvedValue(undefined);
     const mockLlm = {} as never;
 
-    try {
-      await processSession(sessionId, {
+    await expect(
+      processSession(sessionId, {
         llm: mockLlm,
         searchSimilar,
         indexTopic,
         db,
         memoryDir,
         journalDir,
-      });
-      console.log("E7: pipeline completed (unexpected)");
-    } catch (err) {
-      console.log("E7: pipeline threw:", (err as Error).message);
-    }
+      }),
+    ).rejects.toThrow();
 
-    // After fix: updatePointer (Step 7) runs BEFORE markJournalExtracted (Step 8)
-    // So if pointer fails, journal stays at extracted:false
+    // updatePointer (Step 7) runs BEFORE markJournalExtracted (Step 8).
+    // If the pointer write fails, the journal must stay extracted:false so the
+    // session is safely retried on the next run.
     const journalContent = readFileSync(journalPath, "utf-8");
-    const extractedFlag = journalContent.includes("extracted: true");
-    console.log("E7 journal marked extracted:", extractedFlag);
-
-    if (!extractedFlag) {
-      console.log("E7 VERDICT: FIX VERIFIED — journal NOT marked extracted, safe to retry on next run");
-    } else {
-      console.log("E7 VERDICT: STILL BUGGY — journal marked extracted despite pointer failure");
-    }
+    expect(journalContent).toContain("extracted: false");
+    expect(journalContent).not.toContain("extracted: true");
   });
 });
 
-describe("E3 v2: Large content updates — all preserved inline", () => {
-  it("accumulates large updates (2000 chars each) without overflow", async () => {
+describe("E3 v2: Large content updates replace the file (compact-on-update)", () => {
+  it("keeps only the latest large update, dropping superseded content", async () => {
     const { applyChanges } = await import("../../src/memory/writer");
+    const { existsSync } = await import("node:fs");
     const dir2 = mkdtempSync(join(tmpdir(), "edge-e3v2-"));
     const mem = join(dir2, "memory");
     mkdirSync(join(mem, "topics"), { recursive: true });
@@ -136,21 +129,12 @@ describe("E3 v2: Large content updates — all preserved inline", () => {
 
     const content = readFileSync(join(mem, "topics", "big-topic", "CONTEXT.md"), "utf-8");
     const resourcesPath = join(mem, "topics", "big-topic", "resources");
-    const hasResources = (await import("node:fs")).existsSync(resourcesPath);
 
-    console.log("E3v2 final content length:", content.length, "chars");
-    console.log("E3v2 has resources:", hasResources);
-    console.log("E3v2 contains 'Initial topic':", content.includes("Initial topic"));
-    console.log("E3v2 contains 'Update #1':", content.includes("Update #1"));
-    console.log("E3v2 contains 'Update #30':", content.includes("Update #30"));
-
-    if (!hasResources && content.includes("Initial topic") && content.includes("Update #30")) {
-      console.log("E3v2 VERDICT: PASS — all content preserved inline, no auto-overflow");
-    } else if (hasResources) {
-      console.log("E3v2 VERDICT: FAIL — unexpected resources/ created");
-    } else {
-      console.log("E3v2 VERDICT: FAIL — oldest content dropped");
-    }
+    // Each update replaces the file — only the last update survives, no overflow.
+    expect(content.startsWith("Update #30:")).toBe(true);
+    expect(content).not.toContain("Initial topic");
+    expect(content).not.toContain("Update #1:");
+    expect(existsSync(resourcesPath)).toBe(false);
 
     rmSync(dir2, { recursive: true, force: true });
   });

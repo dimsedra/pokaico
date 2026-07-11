@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { applyChanges } from "../../src/memory/writer";
-import type { TopicChange } from "../../src/memory/types";
 
-describe("E3: 50 consecutive topic updates — all content preserved inline", () => {
-  it("accumulates 50 updates without truncation or overflow", async () => {
+describe("E3: consecutive topic updates replace CONTEXT.md (compact-on-update)", () => {
+  it("keeps only the latest compacted content, no append accumulation", async () => {
     const dir = mkdtempSync(join(tmpdir(), "edge-e3-"));
     const memoryDir = join(dir, "memory");
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
@@ -26,73 +25,84 @@ describe("E3: 50 consecutive topic updates — all content preserved inline", ()
     }
 
     const content = readFileSync(join(memoryDir, "topics", "growing-topic", "CONTEXT.md"), "utf-8");
-    const rd = join(memoryDir, "topics", "growing-topic", "resources");
-    const hasResources = existsSync(rd);
+    const resourcesDir = join(memoryDir, "topics", "growing-topic", "resources");
 
-    console.log("E3 final content length:", content.length);
-    console.log("E3 has resources dir:", hasResources);
-    console.log("E3 contains 'Initial state':", content.includes("Initial state"));
-    console.log("E3 contains 'Update #1':", content.includes("Update #1"));
-    console.log("E3 contains 'Update #50':", content.includes("Update #50"));
+    // Update replaces the file with the (already-compacted) content — no append/merge.
+    expect(content.trim()).toBe("Update #50: More learning progress recorded here.");
+    expect(content).not.toContain("Initial state");
+    expect(content).not.toContain("Update #1:");
+    // No overflow supplied → no resources/ directory created.
+    expect(existsSync(resourcesDir)).toBe(false);
 
-    // After fix: CONTEXT.md always keeps all content; no auto-overflow to resources
-    if (content.includes("Initial state") && content.includes("Update #50") && !hasResources) {
-      console.log("E3 VERDICT: PASS — all content preserved inline, no auto-overflow");
-    } else if (hasResources) {
-      console.log("E3 VERDICT: FAIL — unexpected resources/ created from auto-overflow");
-    } else {
-      console.log("E3 VERDICT: FAIL — content lost");
-    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("writes overflow to resources/ when the update carries overflow", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "edge-e3-overflow-"));
+    const memoryDir = join(dir, "memory");
+    mkdirSync(join(memoryDir, "topics"), { recursive: true });
+
+    await applyChanges(
+      [{ topicId: "spilling-topic", action: "create", content: "Lean summary." }],
+      memoryDir,
+      "s1", 1000,
+    );
+
+    await applyChanges(
+      [
+        {
+          topicId: "spilling-topic",
+          action: "update",
+          content: "Lean summary. See [notes](resources/details.md).",
+          overflow: [{ filename: "details.md", content: "Overflowed detail.", relationship: "has-detailed-notes" }],
+        },
+      ],
+      memoryDir,
+      "s2", 2000,
+    );
+
+    const resource = readFileSync(join(memoryDir, "topics", "spilling-topic", "resources", "details.md"), "utf-8");
+    expect(resource).toBe("Overflowed detail.");
 
     rmSync(dir, { recursive: true, force: true });
   });
 });
 
 describe("E8: Path traversal via topicId in writer", () => {
-  it("writes outside memoryDir with ../ in topicId", async () => {
+  it("rejects ../ in topicId and writes nothing outside memoryDir", async () => {
     const dir = mkdtempSync(join(tmpdir(), "edge-e8-"));
     const memoryDir = join(dir, "memory");
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
 
-    try {
-      await applyChanges(
+    await expect(
+      applyChanges(
         [{ topicId: "../../escaped-file", action: "create", content: "Should NOT be outside!" }],
         memoryDir,
         "malicious", 9999,
-      );
-      console.log("E8: no error thrown (unexpected)");
-    } catch (err) {
-      console.log("E8: correctly rejected:", (err as Error).message);
-    }
+      ),
+    ).rejects.toThrow(/Invalid topicId/);
 
-    const escapePath = join(dir, "escaped-file.txt");
-    console.log("E8 escaped file exists:", existsSync(escapePath));
-    console.log("E8 VERDICT: FIX VERIFIED — topicId validation rejects path traversal");
+    expect(existsSync(join(dir, "escaped-file.txt"))).toBe(false);
+    expect(existsSync(join(dir, "escaped-file", "CONTEXT.md"))).toBe(false);
 
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("writes outside memoryDir with absolute path on Windows", async () => {
+  it("rejects an absolute Windows path in topicId", async () => {
     const dir = mkdtempSync(join(tmpdir(), "edge-e8b-"));
     const memoryDir = join(dir, "memory");
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
 
-    try {
-      await applyChanges(
+    await expect(
+      applyChanges(
         [{ topicId: "C:\\hijacked-path", action: "create", content: "Absolute path attack!" }],
         memoryDir,
         "malicious", 9999,
-      );
-      console.log("E8b: no error thrown (unexpected)");
-    } catch (err) {
-      console.log("E8b: correctly rejected:", (err as Error).message);
-    }
+      ),
+    ).rejects.toThrow(/Invalid topicId/);
 
-    console.log("E8b hijacked exists:", existsSync("C:\\hijacked-path\\CONTEXT.md"));
-    console.log("E8b VERDICT: FIX VERIFIED — topicId validation rejects invalid paths");
+    expect(existsSync("C:\\hijacked-path\\CONTEXT.md")).toBe(false);
 
     rmSync(dir, { recursive: true, force: true });
   });
 });
-
-

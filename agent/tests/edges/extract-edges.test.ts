@@ -1,9 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { extractTopics } from "../../src/memory/extract";
-import type { TopicMeta } from "../../src/memory/topics";
 
 describe("E6: Summarizer returns keyPoints: []", () => {
-  it("handles empty keyPoints array gracefully", async () => {
+  it("produces valid output with no empty 'Key points:' section", async () => {
     const summary = {
       summary: "User had a short chat about nothing specific.",
       keyPoints: [] as string[],
@@ -13,23 +12,13 @@ describe("E6: Summarizer returns keyPoints: []", () => {
 
     const result = await extractTopics(summary, [], searchSimilar);
 
-    console.log("E6 result:", JSON.stringify(result));
-    console.log("E6 topicId:", result[0].topicId);
-    console.log("E6 content:", result[0].content);
-
-    // Should not crash, should produce valid output
     expect(result).toHaveLength(1);
     expect(result[0].action).toBe("create");
     expect(result[0].topicId).toBeTruthy();
-
-    if (result[0].content.includes("Key points:\n")) {
-      console.log("E6 VERDICT: BUG CONFIRMED — empty 'Key points:' section in topic content");
-    } else {
-      console.log("E6 VERDICT: PASS — no empty section");
-    }
+    expect(result[0].content).not.toContain("Key points:");
   });
 
-  it("handles keyPoints with empty strings", async () => {
+  it("derives a meaningful slug from the summary when keyPoints are empty strings", async () => {
     const summary = {
       summary: "Short talk.",
       keyPoints: ["", ""],
@@ -39,16 +28,10 @@ describe("E6: Summarizer returns keyPoints: []", () => {
 
     const result = await extractTopics(summary, [], searchSimilar);
 
-    console.log("E6b topicId from ['', '']:", result[0].topicId);
-    console.log("E6b content:", result[0].content);
-
     expect(result).toHaveLength(1);
     expect(result[0].topicId).toBeTruthy();
-
-    if (result[0].topicId === "topic") {
-      console.log("E6b VERDICT: WARNING — generic 'topic' slug due to empty keyPoints");
-    } else {
-      console.log("E6b VERDICT: PASS — slug derived from summary");
-    }
+    // Slug comes from the summary, not a generic "topic" fallback.
+    expect(result[0].topicId).not.toBe("topic");
+    expect(result[0].topicId).toBe("short-talk");
   });
 });

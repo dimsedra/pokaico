@@ -86,22 +86,12 @@ ${turnLines}
     });
     const elapsed = Date.now() - start;
 
-    console.log(`E4 200 turns, elapsed: ${elapsed}ms`);
-    console.log("E4 hasNewMessages:", result.hasNewMessages);
-    console.log("E4 error:", result.error);
+    console.log(`E4 200 turns, elapsed: ${elapsed}ms, error: ${result.error ?? "none"}`);
 
-    if (result.error) {
-      console.log("E4 VERDICT: BUG CONFIRMED — pipeline failed:", result.error);
-    } else if (result.summary) {
-      console.log("E4 summary:", result.summary.summary?.slice(0, 200));
-      console.log("E4 keyPoints count:", result.summary.keyPoints.length);
-      console.log("E4 VERDICT: PASS — handled 200-turn conversation successfully");
-    }
-
+    // The pipeline must handle a very long conversation without crashing —
+    // either producing a summary or gracefully reporting an error (not throwing).
     expect(result.hasNewMessages).toBe(true);
-    if (result.error) {
-      console.log("E4 DETAIL: pipeline gracefully reported error (not a crash)");
-    } else {
+    if (!result.error) {
       expect(result.summary).toBeTruthy();
     }
   }, 120_000);

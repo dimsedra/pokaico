@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { createDb, closeDb, type PokaicoDb } from "../../src/db/client";
 import { createEmbeddingService } from "../../src/embeddings/service";
 
-describe("E9: Empty content indexed — phantom search results", () => {
-  it("creates a phantom row with embedding of 'passage: '", async () => {
+describe("E9: Empty content indexed does not create phantom search results", () => {
+  it("does not store an empty chunk nor surface it in search", async () => {
     const dir = mkdtempSync(join(tmpdir(), "edge-e9-"));
     const db = createDb(join(dir, "test.db"));
 
@@ -19,36 +19,21 @@ describe("E9: Empty content indexed — phantom search results", () => {
     const svc = createEmbeddingService(mockModel, db);
     await svc.indexTopic("empty-topic", "");
 
-    // Check if row exists
     const ftsRow = db
       .prepare("SELECT content FROM chunk_fts WHERE topic_id = ?")
       .get("empty-topic") as { content: string } | undefined;
+    expect(ftsRow).toBeUndefined();
 
-    console.log("E9 FTS content:", ftsRow?.content);
-    console.log("E9 FTS content length:", ftsRow?.content?.length);
-
-    if (ftsRow && ftsRow.content === "") {
-      console.log("E9 VERDICT: BUG CONFIRMED — empty content stored in FTS5");
-    }
-
-    // Try to search for it
     const results = await svc.searchSimilar("any query");
-    const hasEmptyResult = results.some((r) => r.content === "");
-    console.log("E9 search results with empty content:", hasEmptyResult);
-
-    if (hasEmptyResult) {
-      console.log("E9 VERDICT: BUG CONFIRMED — phantom empty result appears in search");
-    } else {
-      console.log("E9 VERDICT: PASS — no phantom results");
-    }
+    expect(results.some((r) => r.content === "")).toBe(false);
 
     closeDb(db);
     rmSync(dir, { recursive: true, force: true });
   });
 });
 
-describe("E10: Duplicate content indexing — duplicate search results", () => {
-  it("produces duplicate results when same content indexed twice", async () => {
+describe("E10: Re-indexing identical content does not duplicate rows", () => {
+  it("keeps a single chunk and a single search result", async () => {
     const dir = mkdtempSync(join(tmpdir(), "edge-e10-"));
     const db = createDb(join(dir, "test.db"));
 
@@ -60,29 +45,17 @@ describe("E10: Duplicate content indexing — duplicate search results", () => {
 
     const svc = createEmbeddingService(mockModel, db);
 
-    // Index same content twice
     await svc.indexTopic("dogs", "Dogs are loyal animals.");
-    await svc.indexTopic("dogs", "Dogs are loyal animals."); // duplicate!
+    await svc.indexTopic("dogs", "Dogs are loyal animals."); // re-index same content
 
-    const cnt = (db
+    const cnt = db
       .prepare("SELECT COUNT(*) as cnt FROM chunk_fts WHERE topic_id = ?")
-      .get("dogs") as { cnt: number });
-
-    console.log("E10 duplicate rows in chunk_fts:", cnt.cnt);
-
-    if (cnt.cnt >= 2) {
-      console.log("E10 VERDICT: BUG CONFIRMED — duplicate rows in index");
-    } else {
-      console.log("E10 VERDICT: PASS — no duplicates");
-    }
+      .get("dogs") as { cnt: number };
+    expect(cnt.cnt).toBe(1);
 
     const results = await svc.searchSimilar("dogs loyal animals");
     const dogResults = results.filter((r) => r.topicId === "dogs");
-    console.log("E10 search results for 'dogs':", dogResults.length);
-
-    if (dogResults.length >= 2) {
-      console.log("E10 VERDICT: BUG CONFIRMED — duplicate search results");
-    }
+    expect(dogResults).toHaveLength(1);
 
     closeDb(db);
     rmSync(dir, { recursive: true, force: true });
