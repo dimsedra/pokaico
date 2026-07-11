@@ -53,7 +53,7 @@
 
 - [x] Session pointer guard: read `last_extracted_message_ts`, skip if no new messages
 - [x] Summarization: LLM call to condense session into structured summary
-- [x] `refresh_foundational`: always runs on 3 shipped topics (`user-profile`, `user-background`, `user-communication`), 700-token target each
+- [x] `refresh_foundational`: always runs on 3 shipped topics (`user-profile`, `user-background`, `user-patterns`), 700-token target each
 - [x] `extract_topics`: similarity-gated against existing topics, create-or-update, excludes foundational, slug-collision guard
 - [x] Write phase: per-topic async mutex, per-session async mutex, provenance markers `[src:sessionId:timestamp]`, action types (`create`, `update`, `external`), topicId validation, idempotency guard, resources/ for external artifacts only (no auto-overflow)
 - [x] Re-index: rebuild FTS5 + embedding vectors for updated topic with dedup check, char/4 token estimation
@@ -121,9 +121,9 @@ Tracking issues:
 
 **Reason:** Menyediakan slot untuk `user-patterns` (trigger skill creation v0.2). `user-communication` di-merge ke `user-profile`, konten tidak hilang — hanya 3 topik jadi:
 
-- [ ] `user-profile` (merged: personality + communication preferences + triggers + values)
-- [ ] `user-background` (tetap: bio + lokasi + pekerjaan + karir)
-- [ ] `user-patterns` (baru: pola berulang untuk trigger skill creation)
+- [x] `user-profile` (merged: personality + communication preferences + triggers + values)
+- [x] `user-background` (tetap: bio + lokasi + pekerjaan + karir)
+- [x] `user-patterns` (baru: pola berulang untuk trigger skill creation)
 
 **Blocker Phase 4:** Issue #7 harus selesai sebelum Group A Phase 4 bisa dimulai.
 

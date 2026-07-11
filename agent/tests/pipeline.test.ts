@@ -159,13 +159,13 @@ describe("pipeline E2E", () => {
     ]);
 
     // Seed foundational topic
-    const profileDir = join(memoryDir, "topics", "user-communication");
+    const profileDir = join(memoryDir, "topics", "user-profile");
     mkdirSync(profileDir, { recursive: true });
     writeFileSync(join(profileDir, "CONTEXT.md"), "User likes casual tone.", "utf-8");
 
     db.prepare(
       "INSERT OR IGNORE INTO topics(id, path, summary, token_count, is_foundational, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("user-communication", "memory/topics/user-communication/CONTEXT.md", "", 5, 1, 0);
+    ).run("user-profile", "memory/topics/user-profile/CONTEXT.md", "", 5, 1, 0);
 
     mockSummarize.mockResolvedValue({
       summary: "User wants casual chat style, not formal.",
@@ -173,7 +173,7 @@ describe("pipeline E2E", () => {
     });
     mockRefresh.mockResolvedValue([
       {
-        topicId: "user-communication",
+        topicId: "user-profile",
         newContent: "User prefers casual tone. Do not be too formal.",
         hasNewInfo: true,
       },
@@ -195,7 +195,7 @@ describe("pipeline E2E", () => {
     });
 
     expect(result.updates).toHaveLength(1);
-    expect(result.updates[0].topicId).toBe("user-communication");
+    expect(result.updates[0].topicId).toBe("user-profile");
 
     const content = readFileSync(join(profileDir, "CONTEXT.md"), "utf-8");
     expect(content).toContain("casual");

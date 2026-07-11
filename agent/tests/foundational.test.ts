@@ -76,7 +76,7 @@ describe("refreshFoundational", () => {
         updates: [
           { topicId: "user-profile", newContent: null, hasNewInfo: false },
           { topicId: "user-background", newContent: null, hasNewInfo: false },
-          { topicId: "user-communication", newContent: "User prefers casual tone.", hasNewInfo: true },
+          { topicId: "user-patterns", newContent: "User often requests blog drafts weekly.", hasNewInfo: true },
         ],
       },
     });
@@ -84,7 +84,7 @@ describe("refreshFoundational", () => {
     const result = await refreshFoundational(summary, [
       { topicId: "user-profile", currentContent: "" },
       { topicId: "user-background", currentContent: "" },
-      { topicId: "user-communication", currentContent: "" },
+      { topicId: "user-patterns", currentContent: "" },
     ], mockModel);
 
     expect(result).toHaveLength(3);

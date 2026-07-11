@@ -54,7 +54,7 @@ type TopicRow = {
   updated_at: number;
 };
 
-const FOUNDATIONAL_TOPIC_IDS = ["user-profile", "user-background", "user-communication"];
+const FOUNDATIONAL_TOPIC_IDS = ["user-profile", "user-background", "user-patterns"];
 const JOURNAL_FILE_RE = /^\d{4}-\d{2}-\d{2}-(.+)\.md$/;
 
 function parseUnixTimestamp(startedAt: string, hhMmSs: string): number {
