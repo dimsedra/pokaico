@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { PokaicoDb } from "../db/client";
 
@@ -97,7 +97,8 @@ function readEdges(db: PokaicoDb): IndexEdge[] {
         "SELECT from_topic AS fromTopic, to_topic AS toTopic, relationship FROM edges",
       )
       .all() as IndexEdge[];
-  } catch {
+  } catch (err) {
+    console.error("[pokaico] readEdges failed (treating as empty):", err);
     return [];
   }
 }
@@ -130,5 +131,10 @@ export function regenerateIndex(memoryDir: string, db: PokaicoDb): void {
   }
   sections.push("");
 
-  writeFileSync(indexPath, sections.join("\n"), "utf-8");
+  // Atomic write: render to a temp file in the same directory, then rename into
+  // place so a crash mid-write can never leave a half-written INDEX.md (which
+  // becomes the primary routing map read at session start in Langkah 2).
+  const tmpPath = `${indexPath}.tmp`;
+  writeFileSync(tmpPath, sections.join("\n"), "utf-8");
+  renameSync(tmpPath, indexPath);
 }

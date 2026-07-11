@@ -315,7 +315,13 @@ export async function processSession(
   // Step6c (observer): rebuild INDEX.md from the current topic graph so the
   // routing map stays fresh after every extraction (issue #3). Deterministic,
   // LLM-free — runs after all edges/resources are recorded above.
-  regenerateIndex(memoryDir, db);
+  // Non-critical: a failure here must NOT abort the extraction (which would
+  // leave the journal unmarked and re-trigger on the next run), so swallow it.
+  try {
+    regenerateIndex(memoryDir, db);
+  } catch (err) {
+    console.error("[pokaico] regenerateIndex failed:", err);
+  }
 
   // Step 7: Update pointer (do this BEFORE marking journal as extracted)
   // If this fails, the journal stays extracted:false and will be re-processed safely

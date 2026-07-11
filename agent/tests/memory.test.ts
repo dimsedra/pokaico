@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { mkdtempSync, readFileSync, existsSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -125,6 +125,13 @@ describe("ensureIndex", () => {
 });
 
 describe("regenerateIndex (issue #3 — mechanical observer)", () => {
+  // The shared `db` is reused across tests; clear topic/edge rows before each
+  // so a leftover edge from one test can't leak into another via readEdges.
+  beforeEach(() => {
+    db.prepare("DELETE FROM edges").run();
+    db.prepare("DELETE FROM topics").run();
+  });
+
   it("rebuilds INDEX.md from topics + edges, overwriting stale content", () => {
     const dir = mkdtempSync(join(tmpdir(), "pokaico-regen-"));
     createTopic(dir, "cycling", "Daily bike commute to work.");
@@ -168,7 +175,7 @@ describe("regenerateIndex (issue #3 — mechanical observer)", () => {
     expect(second).toBe(first);
   });
 
-  it("drops edges whose endpoint topic no longer exists", () => {
+  it("drops edges whose endpoint topic has no directory", () => {
     const dir = mkdtempSync(join(tmpdir(), "pokaico-regen-edge-"));
     createTopic(dir, "a", "Topic A.");
     db.prepare(
