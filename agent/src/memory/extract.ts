@@ -1,11 +1,13 @@
 import type { SummaryOutput, TopicChange } from "./types";
 import type { TopicMeta } from "./topics";
 
-// Secondary (fallback) gate for the embedding/FTS match. Since Langkah 4/2
-// made INDEX.md the PRIMARY, deterministic router, embedding is no longer the
-// sole decider — this threshold only gates the *fallback* update path when
-// INDEX yields no lexical hit (issue #1, poin 3: demoted from primary).
-export const EMBEDDING_MATCH_THRESHOLD = 0.35;
+// Secondary (fallback) gate for the retrieval ranker. Since Langkah 4/2 made
+// INDEX.md the PRIMARY, deterministic router, the embedding/FTS search is now
+// only the *fallback* ranker — this threshold gates the update path when
+// both the INDEX slug set and the DB slug set fail to match (issue #1, poin 3:
+// demoted from primary). NOTE: it compares against the *hybrid* combined
+// score (vector + FTS), not a pure embedding score.
+export const FALLBACK_MATCH_THRESHOLD = 0.35;
 
 type SearchResult = {
   topicId: string;
@@ -43,7 +45,7 @@ function pickExistingTopic(
   );
 
   for (const r of searchResults) {
-    if (r.score >= EMBEDDING_MATCH_THRESHOLD && nonFoundational.has(r.topicId)) {
+    if (r.score >= FALLBACK_MATCH_THRESHOLD && nonFoundational.has(r.topicId)) {
       return { topicId: r.topicId, score: r.score };
     }
   }
@@ -128,7 +130,7 @@ export async function extractTopics(
           topicId: embMatch.topicId,
           action: "update",
           content: summary.summary,
-          similarityScore: match.score,
+          similarityScore: embMatch.score,
         },
       ];
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { extractTopics, EMBEDDING_MATCH_THRESHOLD } from "../src/memory/extract";
+import { extractTopics, FALLBACK_MATCH_THRESHOLD } from "../src/memory/extract";
 import type { TopicMeta } from "../src/memory/topics";
 
 describe("extractTopics", () => {
@@ -127,6 +127,8 @@ describe("extractTopics", () => {
     expect(creates[0].topicId).toContain("job");
     expect(updates).toHaveLength(1);
     expect(updates[0].topicId).toBe("cycling");
+    // The update carries the embedding ranker's score (hybrid combined), not a stale null.
+    expect(updates[0].similarityScore).toBe(0.92);
   });
 
   it("dedupes when two segments match the same existing topic", async () => {
@@ -271,7 +273,22 @@ describe("extractTopics", () => {
     expect(result[0].topicId).not.toBe("user-profile");
   });
 
-  it("exposes EMBEDDING_MATCH_THRESHOLD (0.35) as the secondary/fallback gate", () => {
-    expect(EMBEDDING_MATCH_THRESHOLD).toBe(0.35);
+  it("uses the embedding fallback score in the single-segment path", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([
+      { topicId: "hobbies", score: 0.88, content: "Hobby stuff", sourcePath: "" },
+    ]);
+    const oldStyle = { summary: "I love jazz.", keyPoints: ["jazz"], topics: [] };
+    const existingTopics: TopicMeta[] = [
+      { topicId: "hobbies", summary: "Hobbies", isFoundational: false, updatedAt: 0 },
+    ];
+
+    const result = await extractTopics(oldStyle, existingTopics, searchSimilar);
+    expect(result[0].action).toBe("update");
+    expect(result[0].topicId).toBe("hobbies");
+    expect(result[0].similarityScore).toBe(0.88);
+  });
+
+  it("exposes FALLBACK_MATCH_THRESHOLD (0.35) as the secondary/fallback gate", () => {
+    expect(FALLBACK_MATCH_THRESHOLD).toBe(0.35);
   });
 });

@@ -10,19 +10,28 @@ export type FtsResult = {
 // FTS5 has its own query language: ", *, :, (, ), -, AND/OR/NOT/NEAR are
 // syntax, not literals. A raw user query containing them makes FTS5 throw,
 // which our caller used to swallow into `[]` — silently killing the keyword
-// branch (issue #1, poin 2). This builder strips that syntax, drops the
+// branch (issue #1, point 2). This builder strips that syntax, drops the
 // boolean operators, and quotes each remaining token so FTS5 just searches
-// the words normally. Empty result -> "".
+// the words normally.
+//
+// Tokenization is aligned with FTS5's default `unicode61` tokenizer: it
+// keeps ALL Unicode letters/numbers (so CJK / non-Latin queries still match
+// indexed content) and strips diacritics (é -> e), exactly as content was
+// indexed. Skipping this alignment would silently drop recall for accented or
+// non-ASCII text. Post-condition: returns "" for blank input, otherwise a
+// string of whitespace-joined `"token"` phrases (no raw FTS5 syntax leaks).
 const FTS_OPERATORS = new Set(["AND", "OR", "NOT", "NEAR"]);
 
 export function buildFtsQuery(raw: string): string {
   if (!raw || !raw.trim()) return "";
   const tokens = raw
-    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "") // strip combining diacritics (unicode61 does this)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ") // keep letters/numbers, drop FTS5 syntax
     .split(/\s+/)
     .map((t) => t.trim())
     .filter((t) => t.length > 0 && !FTS_OPERATORS.has(t.toUpperCase()));
-  const quoted = tokens.map((t) => `"${t.replace(/"/g, '""')}"`);
+  const quoted = tokens.map((t) => `"${t}"`);
   return quoted.join(" ");
 }
 

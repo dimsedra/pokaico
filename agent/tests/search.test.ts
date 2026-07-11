@@ -91,6 +91,39 @@ describe("ftsSearch", () => {
     const results = ftsSearch(db, "Tokyo");
     expect(results[0].sourcePath).toBe("memory/topics/travel/CONTEXT.md");
   });
+
+  it("keeps CJK tokens and finds a CJK chunk (no recall regression)", () => {
+    const insert = db.prepare(
+      "INSERT INTO chunk_fts(rowid, content, topic_id, source_path) VALUES (?, ?, ?, ?)",
+    );
+    insert.run(9, "会议 schedule 安排", "cjk", "memory/topics/cjk/CONTEXT.md");
+    db.prepare("INSERT INTO chunk_vec(embedding) VALUES (?)").run(
+      Buffer.from(new Float32Array(384).fill(0.01).buffer),
+    );
+
+    const results = ftsSearch(db, "会议");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((r) => r.topicId === "cjk")).toBe(true);
+  });
+
+  it("aligns diacritics with the indexer (café -> cafe on both sides)", () => {
+    const insert = db.prepare(
+      "INSERT INTO chunk_fts(rowid, content, topic_id, source_path) VALUES (?, ?, ?, ?)",
+    );
+    insert.run(10, "Café in Paris", "diac", "memory/topics/diac/CONTEXT.md");
+    db.prepare("INSERT INTO chunk_vec(embedding) VALUES (?)").run(
+      Buffer.from(new Float32Array(384).fill(0.01).buffer),
+    );
+
+    const results = ftsSearch(db, "café");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((r) => r.topicId === "diac")).toBe(true);
+  });
+
+  it("returns [] for pure-symbol queries without crashing", () => {
+    expect(ftsSearch(db, '"')).toEqual([]);
+    expect(ftsSearch(db, "!!!")).toEqual([]);
+  });
 });
 
 describe("buildFtsQuery (issue #1, poin 2 — FTS5 syntax safety)", () => {
@@ -118,6 +151,21 @@ describe("buildFtsQuery (issue #1, poin 2 — FTS5 syntax safety)", () => {
   it("does not crash on a leading NOT operator", () => {
     const results = ftsSearch(db, "-vacation");
     expect(Array.isArray(results)).toBe(true);
+  });
+
+  it("keeps CJK tokens and drops boolean operators (point 2)", () => {
+    expect(buildFtsQuery("会议 schedule AND 安排")).toBe('"会议" "schedule" "安排"');
+  });
+
+  it("strips diacritics to align with the unicode61 indexer", () => {
+    expect(buildFtsQuery("Café")).toBe('"Cafe"');
+  });
+
+  it("output is always well-formed (empty or quoted phrases, no leaked syntax)", () => {
+    const out = buildFtsQuery("a : * (b) OR NEAR c");
+    // No raw FTS5 syntax outside the quotes; operators dropped.
+    expect(out).not.toMatch(/(^|\s)(AND|OR|NOT|NEAR)(\s|$)/);
+    expect(out === "" || /^("[^"]+"\s*)+$/.test(out)).toBe(true);
   });
 });
 
