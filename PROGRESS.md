@@ -72,6 +72,18 @@
 - [x] Smoke E2E (Gemini + E5 asli): 1 sesi 2 subjek → 2 topik; chat baru → retrieve; sesi ke-2 → (calibration note)
 - [x] Phase 3 ditutup kembali
 
+### Reopened — CONTEXT.md compaction + cross-link edges [✅]
+
+Menggantikan backlog "Topic re-consolidation" (append-only + provenance markers) dengan model **compact-on-update dalam token cap**: setiap update, LLM merangkum-ulang & *replace* CONTEXT.md; detail yang tidak muat tumpah ke `resources/` (+ inline `See [notes](resources/…)` + edge `has-detailed-notes`). Marker provenance in-text dihapus di jalur compact; idempotensi kini via `session_pointers.last_extracted_message_ts`.
+
+- [x] Slice 1 — `tokens.ts`: `countTokens` (heuristik `ceil(chars/4)`, zero-dep) + `CONTEXT_CAP=2500`/`FOUNDATIONAL_CAP=700`; `reindexer.ts` reuse
+- [x] Slice 2 — `compactor.ts`: `compact()` LLM condense-in-cap → `CompactResult{context, overflow[], edges[]}`; tipe `CompactOverflow`/`CompactEdge`/`CompactResult`
+- [x] Slice 3 — `writer.ts` update = **replace** (bukan append) + tulis overflow ke `resources/`; `pipeline.ts` inject `compact`, condense foundational (ganti `truncate` kasar)
+- [x] Slice 4 — `search.ts` `purgeTopicChunks` + `reindexer.ts` purge chunk lama sebelum re-index (fix akumulasi stale chunk)
+- [x] Slice 5 — `edges.ts` (`writeEdge`/`writeResource`/`linkCoOccurring`/`topicExists`, FK-safe); pipeline step 6b tulis overflow→resource, suggested edges, `linkCoOccurring` saat ≥2 topik
+- [x] Slice 6 — E2E smoke (Gemini asli): `compact()` mengecilkan konten oversized ke dalam cap
+- **Test:** 201 passed, 4 skipped (dijalankan dari `agent/`). Known-limitation tetap: kalibrasi `SIMILARITY_THRESHOLD` (E2E Test 3 update path) & sanitasi karakter khusus FTS5 (E2E Test 2 retrieval)
+
 ---
 
 ## Phase 4: Mastra Agent + Retrieval Tools [ ]
@@ -123,11 +135,13 @@
 
 Ideas, features, and improvements scoped but not yet scheduled into a phase.
 
-### Cross-link edges (NEXT — dikerjakan setelah retrieval multi-topik selesai)
+### Cross-link edges [✅ DONE — lihat Phase 3 "CONTEXT.md compaction + cross-link edges"]
 
-SPEC §6 baris 187: jika satu sesi menyentuh ≥2 topik, tulis edge di tabel `edges` + referensi inline di CONTEXT.md (`See [notes](resources/...md)`). Ditunda sementara agar fokus ke alur save→retrieve dulu.
+SPEC §6 baris 187: jika satu sesi menyentuh ≥2 topik, tulis edge di tabel `edges` + referensi inline di CONTEXT.md (`See [notes](resources/...md)`). Diimplementasikan di Slice 5 (`edges.ts` + pipeline step 6b).
 
-### Topic re-consolidation
+### Topic re-consolidation [✅ SUPERSEDED — diganti compact-on-update di Phase 3]
+
+Desain lama (append-only + provenance markers) di bawah ini digantikan oleh model token-cap compaction. Disimpan sebagai catatan sejarah.
 
 CONTEXT.md grows unbounded as updates accumulate. After many sessions, topics become large and redundant. We need a consolidation step that safely rewrites CONTEXT.md into a more compact form — without losing provenance markers or factual information.
 
