@@ -33,12 +33,17 @@ Everything lives in plain markdown:
 
 ```
 memory/
+ ├─ INDEX.md                    ← routing map, rebuilt every extraction
  └─ topics/
      ├─ hiking/
-     │   ├─ CONTEXT.md       ← "User hikes every weekend. Prefers trails over roads."
-     │   └─ resources/       ← overflow content, long conversations
+     │   ├─ CONTEXT.md          ← "User hikes every weekend. Prefers trails over roads."
+     │   └─ resources/          ← overflow content, long conversations
      ├─ user-profile/
-     │   └─ CONTEXT.md       ← foundational — updated every session
+     │   └─ CONTEXT.md          ← foundational — updated every session
+     ├─ user-background/
+     │   └─ CONTEXT.md          ← foundational
+     ├─ user-communication/
+     │   └─ CONTEXT.md          ← foundational
      └─ ...
 ```
 
@@ -57,12 +62,12 @@ Pokaico is:
 - A cozy desktop companion with pixel art and warm vibes
 - A memory that actually sticks — persistent, organized, growing
 - Files on your machine you can read with any text editor
-- Free, offline-first, no cloud dependency
+- Free, offline-first (local embedding search, optional cloud LLM for extraction)
 
 Pokaico isn't:
 
 - A productivity tool (no kanban, no calendars, no email)
-- A cloud service (your data never leaves your machine)
+- A cloud service (journals stay on your machine; LLM calls use your API key)
 - A generic chatbot wrapper
 - Trying to be the fastest, smartest, or most powerful anything
 
@@ -72,11 +77,11 @@ Pokaico isn't:
 
 **journal** — immutable, append-only transcript of every turn. Write-only. Never mutated.
 
-**memory pipeline** — a background worker that distills conversations into organized topics. Uses Gemini (free tier) for now, but the pipeline is model-agnostic. Summarize → refresh foundational → extract → write → reindex. Every step verified with 167 tests.
+**memory pipeline** — a background worker that distills conversations into organized topics. Uses Gemini (free tier) for now, but the pipeline is model-agnostic. Guard → summarize → refresh foundational → extract (deterministic INDEX pre-check) → compact → write → reindex → observer rebuild INDEX. Every step verified with 247 tests.
 
 **topics** — folders of CONTEXT.md files. Organized. Searchable. Updated every session. Never cluttered because old content overflows to resources/ instead of endless accumulation.
 
-**tools** — `search_topics` and `read_resource` let your pokai find exactly what it needs, right when it matters. Hybrid search (vector + keyword) across your entire memory.
+**tools** — `search_topics`, `read_topic`, `list_topics`, `read_resource`, `read_session`, and `ingest_resource` let your pokai find exactly what it needs, right when it matters. INDEX-primary routing (fast, deterministic) with hybrid search fallback.
 
 **all local** — SQLite + FTS5 + sqlite-vec for fast retrieval. E5-small for embeddings (384-dim, multilingual, CPU-friendly). No API keys required for search.
 
