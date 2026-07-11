@@ -50,6 +50,13 @@ function mergeExisting(existing: string, newEntry: string): string {
   return `${existing}\n\n${newEntry}`;
 }
 
+function buildRelatedSection(change: TopicChange): string | null {
+  const related = change.edges?.filter((e) => e.reason && e.relationship === "related-to" || e.reason);
+  if (!related || related.length === 0) return null;
+  const lines = related.map((e) => `- [${e.toTopic}](CONTEXT.md) — ${e.reason}`);
+  return `\n\n## Related\n${lines.join("\n")}`;
+}
+
 export async function applyChanges(
   changes: TopicChange[],
   memoryDir: string,
@@ -99,11 +106,13 @@ export async function applyChanges(
       }
 
       const entry = buildContent(change.content, sessionId, timestamp);
+      const relatedSection = buildRelatedSection(change);
+      const finalContent = relatedSection ? entry + relatedSection : entry;
 
       if (change.action === "create") {
         const td = topicDir(memoryDir, change.topicId);
         ensureDir(td);
-        writeFileSync(contextPath(memoryDir, change.topicId), entry, "utf-8");
+        writeFileSync(contextPath(memoryDir, change.topicId), finalContent, "utf-8");
         updated.push(change.topicId);
         return;
       }
@@ -111,7 +120,7 @@ export async function applyChanges(
       // action === "update" — content is already compacted upstream; replace file.
       const cp = contextPath(memoryDir, change.topicId);
       ensureDir(topicDir(memoryDir, change.topicId));
-      writeFileSync(cp, change.content, "utf-8");
+      writeFileSync(cp, finalContent, "utf-8");
 
       if (change.overflow && change.overflow.length > 0) {
         const rd = resourcesDir(memoryDir, change.topicId);

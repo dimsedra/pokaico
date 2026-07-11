@@ -14,6 +14,12 @@ const summarySchema = z.object({
       title: z.string().describe("Short topic title (2-4 words, suitable for a slug)"),
       summary: z.string().describe("1-2 sentence summary specific to this topic segment"),
       keyPoints: z.array(z.string()).describe("Key facts specific to this topic segment"),
+      relatedTo: z.array(
+        z.object({
+          topicIndex: z.number().describe("Index of the related segment in this same topics array"),
+          reason: z.string().describe("Short explanation of why these topics are related"),
+        }),
+      ).describe("Cross-topic relationships. Empty if this segment is unrelated to other segments in the same conversation (e.g. a context switch).").default([]),
     }),
   ).describe(
     "Distinct topic segments found in the conversation. Split if the conversation covers multiple different subjects.",

@@ -373,15 +373,11 @@ describe("pipeline E2E", () => {
     expect(result.reindexed).toHaveLength(2);
     expect(indexTopic).toHaveBeenCalledTimes(2);
 
-    // Touching 2 topics in one session writes cross-link edges
-    const edgeCount = db.prepare("SELECT COUNT(*) c FROM edges").get() as { c: number };
-    expect(edgeCount.c).toBe(2); // one unordered pair, bidirectional
-
-    // Observer must rebuild INDEX.md from the graph (issue #3)
+    // Observer must rebuild INDEX.md from topics (issue #3) — pure topic list, no edges section
     const indexContent = readFileSync(join(memoryDir, "INDEX.md"), "utf-8");
     expect(indexContent).toContain(result.changes[0].topicId);
     expect(indexContent).toContain(result.changes[1].topicId);
-    expect(indexContent).toContain("## Edges");
+    expect(indexContent).not.toContain("## Edges");
   });
 
   it("rebuilds INDEX.md via the mechanical observer after extraction", async () => {

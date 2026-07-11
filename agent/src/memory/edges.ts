@@ -9,13 +9,14 @@ export function writeEdge(
   fromTopic: string,
   toTopic: string,
   relationship: string,
+  reason?: string,
 ): boolean {
   if (fromTopic === toTopic) return false;
   if (!topicExists(db, fromTopic) || !topicExists(db, toTopic)) return false;
 
   db.prepare(
-    "INSERT OR IGNORE INTO edges(from_topic, to_topic, relationship) VALUES (?, ?, ?)",
-  ).run(fromTopic, toTopic, relationship);
+    "INSERT OR IGNORE INTO edges(from_topic, to_topic, relationship, reason) VALUES (?, ?, ?, ?)",
+  ).run(fromTopic, toTopic, relationship, reason ?? null);
   return true;
 }
 
@@ -29,18 +30,4 @@ export function writeResource(
   db.prepare(
     "INSERT OR REPLACE INTO resources(id, topic_id, path, kind, updated_at) VALUES (?, ?, ?, ?, ?)",
   ).run(path, topicId, path, kind, Math.floor(Date.now() / 1000));
-}
-
-export function linkCoOccurring(
-  db: PokaicoDb,
-  topicIds: string[],
-  relationship: string = "related-to",
-): void {
-  const existing = [...new Set(topicIds)].filter((t) => topicExists(db, t));
-  for (let i = 0; i < existing.length; i++) {
-    for (let j = i + 1; j < existing.length; j++) {
-      writeEdge(db, existing[i], existing[j], relationship);
-      writeEdge(db, existing[j], existing[i], relationship);
-    }
-  }
 }

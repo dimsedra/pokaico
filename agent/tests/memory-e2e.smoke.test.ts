@@ -319,10 +319,10 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     const indexMd = readFileSync(join(memoryDir, "INDEX.md"), "utf-8");
     expect(indexMd).toContain(cyclingTopic);
     expect(indexMd).toContain(bakingTopic);
-    expect(indexMd).toContain("## Edges");
+    expect(indexMd).not.toContain("## Edges");
 
     console.log("\nE2E Test 5d — INDEX.md validation:");
     console.log(`  topics in INDEX: ${indexMd.split("- **").length - 1}`);
-    console.log(`  edges section present: true`);
+    console.log(`  edges section: not present (edges live in DB + CONTEXT.md ## Related)`);
   }, 30_000);
 });

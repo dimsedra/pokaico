@@ -13,7 +13,7 @@ import { reindexTopics } from "./reindexer";
 import { createMutex } from "./mutex";
 import { compact as defaultCompact } from "./compactor";
 import { CONTEXT_CAP, FOUNDATIONAL_CAP } from "./tokens";
-import { writeEdge, writeResource, linkCoOccurring } from "./edges";
+import { writeEdge, writeResource } from "./edges";
 import type {
   SummaryOutput,
   FoundationalUpdate,
@@ -254,6 +254,8 @@ export async function processSession(
           current,
           newInfo: change.content,
           cap: CONTEXT_CAP,
+          model: llm as never,
+          existingEdges: change.edges,
         });
         resolvedChanges.push({
           ...change,
@@ -300,8 +302,7 @@ export async function processSession(
     await reindexTopics(allUpdated, memoryDir, db, indexTopic);
   }
 
-  // Step 6b: Record graph — overflow resources, suggested edges, and
-  // cross-links when a session touches 2+ topics (SPEC §6.5-6.6).
+  // Step 6b: Record graph — overflow resources and LLM-judged cross-topic edges.
   for (const change of resolvedChanges) {
     if (change.overflow) {
       for (const o of change.overflow) {
@@ -315,12 +316,9 @@ export async function processSession(
     }
     if (change.edges) {
       for (const e of change.edges) {
-        writeEdge(db, change.topicId, e.toTopic, e.relationship);
+        writeEdge(db, change.topicId, e.toTopic, e.relationship, e.reason);
       }
     }
-  }
-  if (writtenTopics.length >= 2) {
-    linkCoOccurring(db, writtenTopics);
   }
 
   // Step6c (observer): rebuild INDEX.md from the current topic graph so the

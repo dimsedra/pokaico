@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
-import { writeEdge, writeResource, linkCoOccurring, topicExists } from "../src/memory/edges";
+import { writeEdge, writeResource, topicExists } from "../src/memory/edges";
 
 describe("edges", () => {
   let db: PokaicoDb;
@@ -50,6 +50,18 @@ describe("edges", () => {
     expect(writeEdge(db, "cycling", "cycling", "related-to")).toBe(false);
   });
 
+  it("records reason for edge when provided", () => {
+    seedTopic("a");
+    seedTopic("b");
+
+    writeEdge(db, "a", "b", "related-to", "User compares trail conditions between both");
+
+    const row = db
+      .prepare("SELECT reason FROM edges WHERE from_topic = ? AND to_topic = ?")
+      .get("a", "b") as { reason: string | null };
+    expect(row.reason).toBe("User compares trail conditions between both");
+  });
+
   it("is idempotent for the same edge", () => {
     seedTopic("a");
     seedTopic("b");
@@ -69,26 +81,6 @@ describe("edges", () => {
       .get("memory/topics/proj/resources/details.md") as { topic_id: string; kind: string };
     expect(row.topic_id).toBe("proj");
     expect(row.kind).toBe("md");
-  });
-
-  it("links co-occurring topics pairwise and bidirectionally", () => {
-    seedTopic("a");
-    seedTopic("b");
-    seedTopic("c");
-
-    linkCoOccurring(db, ["a", "b", "c"]);
-
-    const count = db.prepare("SELECT COUNT(*) c FROM edges").get() as { c: number };
-    // 3 unordered pairs * 2 directions = 6
-    expect(count.c).toBe(6);
-  });
-
-  it("linkCoOccurring skips topics that do not exist", () => {
-    seedTopic("a");
-    linkCoOccurring(db, ["a", "missing"]);
-
-    const count = db.prepare("SELECT COUNT(*) c FROM edges").get() as { c: number };
-    expect(count.c).toBe(0);
   });
 
   it("topicExists reflects presence", () => {

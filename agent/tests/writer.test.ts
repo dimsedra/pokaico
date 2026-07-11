@@ -146,7 +146,7 @@ describe("writer", () => {
     );
 
     // Only the latest compacted state remains — no unbounded growth.
-    expect(content).toBe("Compacted state 20.");
+    expect(content).toBe("[src:s20:20]\n\nCompacted state 20.");
     expect(content).not.toContain("First.");
 
     // No overflow to resources when none provided.

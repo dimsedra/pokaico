@@ -151,12 +151,13 @@ export async function extractTopics(
   const batchSlugs = new Set<string>();
   const matchedTopics = new Map<string, { content: string; score: number }>();
   const newTopics: TopicChange[] = [];
+  const segmentTopicIds: string[] = []; // index → final topicId, for resolving relatedTo
 
   for (const segment of segments) {
     const title = segment.title ?? segment.summary ?? "";
     const match = resolveDeterministic(title);
     if (match) {
-      // Deterministic hit: this segment maps to an existing topic slug → UPDATE.
+      segmentTopicIds.push(match);
       if (matchedTopics.has(match)) {
         const prev = matchedTopics.get(match)!;
         matchedTopics.set(match, {
@@ -173,6 +174,7 @@ export async function extractTopics(
     const embMatch = pickExistingTopic(results, existingTopics);
 
     if (embMatch) {
+      segmentTopicIds.push(embMatch.topicId);
       if (matchedTopics.has(embMatch.topicId)) {
         const prev = matchedTopics.get(embMatch.topicId)!;
         matchedTopics.set(embMatch.topicId, {
@@ -189,6 +191,7 @@ export async function extractTopics(
       const allSlugs = new Set([...existingSlugs, ...batchSlugs]);
       const topicId = slugify(segment.title, allSlugs);
       batchSlugs.add(topicId);
+      segmentTopicIds.push(topicId);
 
       newTopics.push({
         topicId,
@@ -198,9 +201,38 @@ export async function extractTopics(
     }
   }
 
+  // Resolve relatedTo: convert segment indices to topicIds and add edges
+  const edgeMap = new Map<string, { toTopic: string; relationship: string; reason: string }[]>();
+  for (let i = 0; i < segments.length; i++) {
+    const related = segments[i]?.relatedTo ?? [];
+    for (const r of related) {
+      if (r.topicIndex < 0 || r.topicIndex >= segmentTopicIds.length) continue;
+      const fromId = segmentTopicIds[i];
+      const toId = segmentTopicIds[r.topicIndex];
+      if (!fromId || !toId || fromId === toId) continue;
+
+      // Add edge on the from side
+      const fromEdges = edgeMap.get(fromId) ?? [];
+      if (!fromEdges.some((e) => e.toTopic === toId)) {
+        fromEdges.push({ toTopic: toId, relationship: "related-to", reason: r.reason });
+        edgeMap.set(fromId, fromEdges);
+      }
+      // Always bidirectional
+      const toEdges = edgeMap.get(toId) ?? [];
+      if (!toEdges.some((e) => e.toTopic === fromId)) {
+        toEdges.push({ toTopic: fromId, relationship: "related-to", reason: r.reason });
+        edgeMap.set(toId, toEdges);
+      }
+    }
+  }
+
   const updates: TopicChange[] = [];
   for (const [topicId, { content, score }] of matchedTopics) {
-    updates.push({ topicId, action: "update", content, similarityScore: score });
+    updates.push({ topicId, action: "update", content, similarityScore: score, edges: edgeMap.get(topicId) });
+  }
+  for (const ch of newTopics) {
+    const edges = edgeMap.get(ch.topicId);
+    if (edges) ch.edges = edges;
   }
 
   return [...updates, ...newTopics];

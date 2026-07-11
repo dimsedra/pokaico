@@ -20,6 +20,7 @@ export const SCHEMA_SQL = [
     from_topic TEXT REFERENCES topics(id),
     to_topic TEXT REFERENCES topics(id),
     relationship TEXT,
+    reason TEXT DEFAULT NULL,
     PRIMARY KEY (from_topic, to_topic, relationship)
   )`,
 
