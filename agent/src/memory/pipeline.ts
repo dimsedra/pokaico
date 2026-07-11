@@ -212,7 +212,7 @@ export async function processSession(
       currentContent: readTopic(memoryDir, topicId) ?? "",
     }));
     updates = await withRetry("refreshFoundational", () =>
-      defaultRefresh(summary, foundationalTopics, llm),
+      defaultRefresh(summary, foundationalTopics, llm, sessionId),
     );
   } catch (err) {
     // Non-fatal: log and continue
