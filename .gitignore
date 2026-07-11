@@ -27,3 +27,7 @@ Thumbs.db
 agent/dist/
 agent/node_modules/
 agent/python/.venv/
+
+# Personal tooling (agents, skills, prompts)
+.agents/
+AGENTS.md
