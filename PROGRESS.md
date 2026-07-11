@@ -92,13 +92,16 @@ Keputusan arsitektur (dikunci sesi ini): routing retrieval **tidak** lagi bergan
 - **Cek deterministik sebelum `create`.** `extract_topics` membaca `INDEX.md`/daftar topik yg sudah ada **sebelum** `slugify`+`create`; jika slug/entri serupa ada → `update`, bukan `create` baru. Ini menuntaskan akar duplikat (bukan sekadar nambal threshold).
 - **Observer MEKANIS regenerate `INDEX.md`** pasca-ekstraksi (setelah `applyChanges`/`reindexTopics`). `regenerateIndex(memoryDir)` membangun ulang dari tabel `topics`+`edges` **tanpa LLM** (deterministik, biaya nol) — menggantikan `ensureIndex` yg lazy/stale (`topics.ts:76-84`).
 - **Sanitasi + OR-semantics FTS5** (issue #1 poin 2) tetap relevan sbg **fallback hardening**, bukan penentu utama.
-- **Gardening (LLM merge/split, event-driven background job) DITUNDA** v0.2+ — tapi duplikat dihalang di sumber lewat cek `INDEX.md` di atas.
+- **Gardening DITUNDA** v0.1 — dan didefinisikan ulang sbg **user-driven KNOWLEDGE-GRAPH UI (v0.2+)**, BUKAN autonomous LLM job. Penataan memori = preferensi user (rapah/tak rapah beda tiap orang); agent tak boleh memutuskannya sendiri. v0.2+: backend baca `topics`+`edges` → ekspos sbg graph (node+edge+label); UI kanvas interaktif utk navigasi + aksi (merge 2 node, split 1→2, edit/hapus edge, hapus resource, konsolidasi topik) — user yg klik, backend/LLM yg eksekusi. v0.1 cukup: duplikat dihalang di sumber (Langkah 4) + `INDEX.md` selalu segar (Langkah 3). Lihat Phase 5 (Frontend) sbg timba graph UI.
 
 Tracking issues:
 - [#2](https://github.com/dimsedra/pokaico/issues/2) — INDEX.md sbg router utama + cek deterministik sebelum create
 - [#3](https://github.com/dimsedra/pokaico/issues/3) — Observer mekanis regenerate INDEX.md pasca-ekstraksi
 - [#4](https://github.com/dimsedra/pokaico/issues/4) — Audit background ekstraksi jurnal: baca INDEX.md sebelum create (pintu masuk #2/#1)
+- [#5](https://github.com/dimsedra/pokaico/issues/5) — Memory management UI: knowledge-graph (v0.2+), user-driven, backend/LLM eksekutor
 - (Latar: [#1](https://github.com/dimsedra/pokaico/issues/1) poin 2/3/4 — risiko korektnes awal; poin 1=stale chunk SUDAH selesai di Slice 4)
+
+**Urutan eksekusi (disepakati): 3 → 4 → 2 → 1.** Gardening = knowledge-graph UI v0.2+, di luar scope v0.1.
 
 ---
 
