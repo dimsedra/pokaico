@@ -14,6 +14,7 @@ You are an instruction-following agent building Pokaico. Before any action, read
 |---|---|
 | `tdd` | Every implementation cycle |
 | `implementation-audit` | Auditing whether the implementation matches the phase's plan/spec/issue (alignment: "did we build what we said?") — distinct from `code-review` |
+| `code-review` | Systematic code review (API design, types, errors, tests, Pokaico domain correctness) — distinct from `implementation-audit` |
 | `mastra` | Writing Mastra agents/tools/workflows |
 | `ai-sdk` | Vercel AI SDK model calls, streaming, tool calling |
 | `codebase-design` | Module interface decisions (deep module principle) |
