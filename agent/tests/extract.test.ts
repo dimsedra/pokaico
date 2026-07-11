@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { extractTopics } from "../src/memory/extract";
+import { extractTopics, EMBEDDING_MATCH_THRESHOLD } from "../src/memory/extract";
 import type { TopicMeta } from "../src/memory/topics";
 
 describe("extractTopics", () => {
@@ -269,5 +269,9 @@ describe("extractTopics", () => {
     const result = await extractTopics(summary, existingTopics, searchSimilar, indexSlugs);
     expect(result[0].action).toBe("create");
     expect(result[0].topicId).not.toBe("user-profile");
+  });
+
+  it("exposes EMBEDDING_MATCH_THRESHOLD (0.35) as the secondary/fallback gate", () => {
+    expect(EMBEDDING_MATCH_THRESHOLD).toBe(0.35);
   });
 });

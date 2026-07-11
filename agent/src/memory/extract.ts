@@ -1,7 +1,11 @@
 import type { SummaryOutput, TopicChange } from "./types";
 import type { TopicMeta } from "./topics";
 
-const SIMILARITY_THRESHOLD = 0.35;
+// Secondary (fallback) gate for the embedding/FTS match. Since Langkah 4/2
+// made INDEX.md the PRIMARY, deterministic router, embedding is no longer the
+// sole decider — this threshold only gates the *fallback* update path when
+// INDEX yields no lexical hit (issue #1, poin 3: demoted from primary).
+export const EMBEDDING_MATCH_THRESHOLD = 0.35;
 
 type SearchResult = {
   topicId: string;
@@ -39,7 +43,7 @@ function pickExistingTopic(
   );
 
   for (const r of searchResults) {
-    if (r.score >= SIMILARITY_THRESHOLD && nonFoundational.has(r.topicId)) {
+    if (r.score >= EMBEDDING_MATCH_THRESHOLD && nonFoundational.has(r.topicId)) {
       return { topicId: r.topicId, score: r.score };
     }
   }

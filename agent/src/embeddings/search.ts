@@ -7,6 +7,25 @@ export type FtsResult = {
   sourcePath: string;
 };
 
+// FTS5 has its own query language: ", *, :, (, ), -, AND/OR/NOT/NEAR are
+// syntax, not literals. A raw user query containing them makes FTS5 throw,
+// which our caller used to swallow into `[]` — silently killing the keyword
+// branch (issue #1, poin 2). This builder strips that syntax, drops the
+// boolean operators, and quotes each remaining token so FTS5 just searches
+// the words normally. Empty result -> "".
+const FTS_OPERATORS = new Set(["AND", "OR", "NOT", "NEAR"]);
+
+export function buildFtsQuery(raw: string): string {
+  if (!raw || !raw.trim()) return "";
+  const tokens = raw
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && !FTS_OPERATORS.has(t.toUpperCase()));
+  const quoted = tokens.map((t) => `"${t.replace(/"/g, '""')}"`);
+  return quoted.join(" ");
+}
+
 export type HybridResult = {
   topicId: string;
   content: string;
@@ -37,6 +56,8 @@ export function purgeTopicChunks(db: PokaicoDb, topicId: string): void {
 }
 
 export function ftsSearch(db: PokaicoDb, query: string): FtsResult[] {
+  const q = buildFtsQuery(query);
+  if (!q) return [];
   try {
     const rows = db
       .prepare(
@@ -46,7 +67,7 @@ export function ftsSearch(db: PokaicoDb, query: string): FtsResult[] {
          ORDER BY rank
          LIMIT 20`,
       )
-      .all(query) as { topic_id: string; content: string; source_path: string; rank: number }[];
+      .all(q) as { topic_id: string; content: string; source_path: string; rank: number }[];
 
     return rows.map((r) => ({
       topicId: r.topic_id,
@@ -54,7 +75,8 @@ export function ftsSearch(db: PokaicoDb, query: string): FtsResult[] {
       sourcePath: r.source_path,
       rank: r.rank,
     }));
-  } catch {
+  } catch (err) {
+    console.error("[pokaico] ftsSearch failed:", err);
     return [];
   }
 }
@@ -100,37 +122,40 @@ export function hybridSearch(
   }
 
   // FTS5 search
-  try {
-    const ftsResults = db
-      .prepare(
-        `SELECT rowid, topic_id, content, source_path, rank
-         FROM chunk_fts
-         WHERE chunk_fts MATCH ?
-         ORDER BY rank
-         LIMIT ?`,
-      )
-      .all(ftsQuery, limit * 2) as { rowid: number; topic_id: string; content: string; source_path: string; rank: number }[];
+  const ftsQ = buildFtsQuery(ftsQuery);
+  if (ftsQ) {
+    try {
+      const ftsResults = db
+        .prepare(
+          `SELECT rowid, topic_id, content, source_path, rank
+           FROM chunk_fts
+           WHERE chunk_fts MATCH ?
+           ORDER BY rank
+           LIMIT ?`,
+        )
+        .all(ftsQ, limit * 2) as { rowid: number; topic_id: string; content: string; source_path: string; rank: number }[];
 
-    for (const r of ftsResults) {
-      const id = `${r.topic_id}::${r.rowid}`;
-      const existing = seen.get(id);
-      const ftsScore = 1 / (1 + Math.abs(r.rank));
-      if (existing) {
-        existing.ftsScore = ftsScore;
-        existing.combinedScore = existing.vectorScore * vectorWeight + ftsScore * ftsWeight;
-      } else {
-        seen.set(id, {
-          topicId: r.topic_id,
-          content: r.content,
-          sourcePath: r.source_path,
-          vectorScore: 0,
-          ftsScore,
-          combinedScore: ftsScore * ftsWeight,
-        });
+      for (const r of ftsResults) {
+        const id = `${r.topic_id}::${r.rowid}`;
+        const existing = seen.get(id);
+        const ftsScore = 1 / (1 + Math.abs(r.rank));
+        if (existing) {
+          existing.ftsScore = ftsScore;
+          existing.combinedScore = existing.vectorScore * vectorWeight + ftsScore * ftsWeight;
+        } else {
+          seen.set(id, {
+            topicId: r.topic_id,
+            content: r.content,
+            sourcePath: r.source_path,
+            vectorScore: 0,
+            ftsScore,
+            combinedScore: ftsScore * ftsWeight,
+          });
+        }
       }
+    } catch (err) {
+      console.error("[pokaico] ftsSearch (hybrid) failed:", err);
     }
-  } catch {
-    // FTS5 may fail when no data exists
   }
 
   return Array.from(seen.values())

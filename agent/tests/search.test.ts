@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { Buffer } from "node:buffer";
 
 import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
-import { ftsSearch, hybridSearch } from "../src/embeddings/search";
+import { ftsSearch, hybridSearch, buildFtsQuery } from "../src/embeddings/search";
 
 let db: PokaicoDb;
 let tmpDir: string;
@@ -90,6 +90,34 @@ describe("ftsSearch", () => {
   it("returns correct sourcePath in results", () => {
     const results = ftsSearch(db, "Tokyo");
     expect(results[0].sourcePath).toBe("memory/topics/travel/CONTEXT.md");
+  });
+});
+
+describe("buildFtsQuery (issue #1, poin 2 — FTS5 syntax safety)", () => {
+  it("strips FTS5 syntax chars and quotes each token", () => {
+    expect(buildFtsQuery("I love C++ and Go!")).toBe('"I" "love" "C" "Go"');
+  });
+
+  it("drops boolean operators (AND/OR/NOT/NEAR)", () => {
+    expect(buildFtsQuery("vacation AND Paris")).toBe('"vacation" "Paris"');
+    expect(buildFtsQuery("a OR b NOT c")).toBe('"a" "b" "c"');
+  });
+
+  it("returns empty string for blank input", () => {
+    expect(buildFtsQuery("")).toBe("");
+    expect(buildFtsQuery("   ")).toBe("");
+  });
+
+  it("recovers a real token hidden inside broken syntax (no silent kill)", () => {
+    // Raw '"vacation" AND (Paris)' used to crash FTS5 -> swallowed -> []
+    const results = ftsSearch(db, '"vacation" AND (Paris)');
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.every((r) => r.topicId === "travel")).toBe(true);
+  });
+
+  it("does not crash on a leading NOT operator", () => {
+    const results = ftsSearch(db, "-vacation");
+    expect(Array.isArray(results)).toBe(true);
   });
 });
 
