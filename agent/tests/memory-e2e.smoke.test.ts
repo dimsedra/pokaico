@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,6 +7,7 @@ import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
 import { createPythonEmbeddingModel } from "../src/embeddings/model";
 import { createEmbeddingService } from "../src/embeddings/service";
 import { processSession } from "../src/memory/pipeline";
+import { retrieveMemory } from "../src/memory/retrieval";
 import { compact } from "../src/memory/compactor";
 import { countTokens } from "../src/memory/tokens";
 
@@ -210,7 +211,10 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     ).toBeGreaterThan(0);
     const allDirs = readdirSync(join(memoryDir, "topics"));
     expect(allDirs).toContain(existingId);
-    expect(allDirs).toContain("sourdough-bread-baking");
+    // All created topics survive (use captured IDs, not hardcoded slugs).
+    for (const id of capturedTopicIds) {
+      expect(allDirs).toContain(id);
+    }
     // The existing cycling topic content should be unchanged or grown (not erased).
     const cyclingContent = readFileSync(
       join(memoryDir, "topics", existingId, "CONTEXT.md"),
@@ -248,4 +252,77 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     expect(contextTokens).toBeLessThanOrEqual(cap * 1.3);
     expect(result.context.length).toBeGreaterThan(0);
   }, 120_000);
+
+  it("Test 5: graph read-path via INDEX (routing without embedding), filesystem traversal, edges", async () => {
+    expect(capturedTopicIds.length).toBeGreaterThanOrEqual(2);
+
+    const cyclingTopic = capturedTopicIds.find(
+      (id) => id.includes("cycl") || id.includes("commut") || id.includes("bike"),
+    )!;
+    const bakingTopic = capturedTopicIds.find(
+      (id) => id.includes("sour") || id.includes("bak") || id.includes("bread"),
+    )!;
+    expect(cyclingTopic).toBeTruthy();
+    expect(bakingTopic).toBeTruthy();
+
+    // === 5a — INDEX-primary routing (path gembira) ===
+    // Query tentang cycling harus match INDEX entry "commuting-via-cycling"
+    // secara leksikal, tanpa menyentuh embedding.
+    const searchSpy = vi.fn(async () => []);
+    const ctx = await retrieveMemory(memoryDir, "cycling commute", {
+      searchSimilar: searchSpy,
+    });
+
+    // CONTEXT.md dari filesystem ter-load (bukan FTS5/similarity)
+    expect(ctx).toContain(`# ${cyclingTopic}`);
+    expect(ctx).toContain("cycling");
+    expect(ctx).toContain("15km");
+    // INDEX hit → searchSimilar tidak pernah dipanggil
+    expect(searchSpy).not.toHaveBeenCalled();
+
+    console.log("\nE2E Test 5a — INDEX-primary routing:");
+    console.log(`  query: "cycling commute" → INDEX match: ${cyclingTopic}`);
+    console.log(`  searchSimilar called: ${searchSpy.mock.calls.length}`);
+    console.log(`  context length: ${ctx.length} chars`);
+
+    // === 5b — Fallback saat INDEX miss ===
+    const fallbackSpy = vi.fn(async () => []);
+    const miss = await retrieveMemory(memoryDir, "quantum physics", {
+      searchSimilar: fallbackSpy,
+    });
+    // INDEX kosong → fallback embedding dipanggil
+    expect(fallbackSpy).toHaveBeenCalledOnce();
+
+    console.log("\nE2E Test 5b — INDEX miss → fallback:");
+    console.log(`  query: "quantum physics" → no INDEX match`);
+    console.log(`  searchSimilar called: ${fallbackSpy.mock.calls.length}`);
+
+    // === 5c — Graph edges terverifikasi di SQLite ===
+    const edges = db.prepare(
+      "SELECT from_topic, to_topic, relationship FROM edges ORDER BY from_topic",
+    ).all() as { from_topic: string; to_topic: string; relationship: string }[];
+
+    expect(edges.length).toBeGreaterThan(0);
+    const hasCrossLink = edges.some(
+      (e) =>
+        (e.from_topic === cyclingTopic && e.to_topic === bakingTopic) ||
+        (e.from_topic === bakingTopic && e.to_topic === cyclingTopic),
+    );
+    expect(hasCrossLink).toBe(true);
+
+    console.log("\nE2E Test 5c — Graph edges:");
+    for (const e of edges) {
+      console.log(`  ${e.from_topic} → ${e.to_topic}: ${e.relationship}`);
+    }
+
+    // === 5d — INDEX.md berisi node list + edge section ===
+    const indexMd = readFileSync(join(memoryDir, "INDEX.md"), "utf-8");
+    expect(indexMd).toContain(cyclingTopic);
+    expect(indexMd).toContain(bakingTopic);
+    expect(indexMd).toContain("## Edges");
+
+    console.log("\nE2E Test 5d — INDEX.md validation:");
+    console.log(`  topics in INDEX: ${indexMd.split("- **").length - 1}`);
+    console.log(`  edges section present: true`);
+  }, 30_000);
 });
