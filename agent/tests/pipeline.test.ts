@@ -25,6 +25,7 @@ vi.mock("../src/memory/topics", async (importOriginal) => {
 });
 
 import { processSession } from "../src/memory/pipeline";
+import { FOUNDATIONAL_TOPIC_IDS } from "../src/memory/pipeline";
 import { summarize } from "../src/memory/summarizer";
 import { refreshFoundational } from "../src/memory/foundational";
 
@@ -59,6 +60,11 @@ describe("pipeline E2E", () => {
   let dir: string;
   let journalDir: string;
   let memoryDir: string;
+
+  it("FOUNDATIONAL_TOPIC_IDS has the correct 3 topics and no user-communication", () => {
+    expect(FOUNDATIONAL_TOPIC_IDS).toEqual(["user-profile", "user-background", "user-patterns"]);
+    expect(FOUNDATIONAL_TOPIC_IDS).not.toContain("user-communication");
+  });
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "pipeline-test-"));
@@ -159,13 +165,13 @@ describe("pipeline E2E", () => {
     ]);
 
     // Seed foundational topic
-    const profileDir = join(memoryDir, "topics", "user-communication");
+    const profileDir = join(memoryDir, "topics", "user-profile");
     mkdirSync(profileDir, { recursive: true });
     writeFileSync(join(profileDir, "CONTEXT.md"), "User likes casual tone.", "utf-8");
 
     db.prepare(
       "INSERT OR IGNORE INTO topics(id, path, summary, token_count, is_foundational, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("user-communication", "memory/topics/user-communication/CONTEXT.md", "", 5, 1, 0);
+    ).run("user-profile", "memory/topics/user-profile/CONTEXT.md", "", 5, 1, 0);
 
     mockSummarize.mockResolvedValue({
       summary: "User wants casual chat style, not formal.",
@@ -173,7 +179,7 @@ describe("pipeline E2E", () => {
     });
     mockRefresh.mockResolvedValue([
       {
-        topicId: "user-communication",
+        topicId: "user-profile",
         newContent: "User prefers casual tone. Do not be too formal.",
         hasNewInfo: true,
       },
@@ -195,7 +201,7 @@ describe("pipeline E2E", () => {
     });
 
     expect(result.updates).toHaveLength(1);
-    expect(result.updates[0].topicId).toBe("user-communication");
+    expect(result.updates[0].topicId).toBe("user-profile");
 
     const content = readFileSync(join(profileDir, "CONTEXT.md"), "utf-8");
     expect(content).toContain("casual");
@@ -373,15 +379,11 @@ describe("pipeline E2E", () => {
     expect(result.reindexed).toHaveLength(2);
     expect(indexTopic).toHaveBeenCalledTimes(2);
 
-    // Touching 2 topics in one session writes cross-link edges
-    const edgeCount = db.prepare("SELECT COUNT(*) c FROM edges").get() as { c: number };
-    expect(edgeCount.c).toBe(2); // one unordered pair, bidirectional
-
-    // Observer must rebuild INDEX.md from the graph (issue #3)
+    // Observer must rebuild INDEX.md from topics (issue #3) — pure topic list, no edges section
     const indexContent = readFileSync(join(memoryDir, "INDEX.md"), "utf-8");
     expect(indexContent).toContain(result.changes[0].topicId);
     expect(indexContent).toContain(result.changes[1].topicId);
-    expect(indexContent).toContain("## Edges");
+    expect(indexContent).not.toContain("## Edges");
   });
 
   it("rebuilds INDEX.md via the mechanical observer after extraction", async () => {

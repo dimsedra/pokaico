@@ -146,11 +146,28 @@ describe("writer", () => {
     );
 
     // Only the latest compacted state remains — no unbounded growth.
-    expect(content).toBe("Compacted state 20.");
+    expect(content).toBe("[src:s20:20]\n\nCompacted state 20.");
     expect(content).not.toContain("First.");
 
     // No overflow to resources when none provided.
     const rd = join(memoryDir(), "topics", "growing", "resources");
     expect(existsSync(rd)).toBe(false);
+  });
+
+  it("writes ## Related section when change has edges with reason", async () => {
+    const rDir = mkdtempSync(join(tmpdir(), "writer-related-"));
+    const rMem = join(rDir, "memory");
+    mkdirSync(join(rMem, "topics"), { recursive: true });
+
+    await applyChanges(
+      [{ topicId: "a", action: "create", content: "Topic A.", edges: [{ toTopic: "b", relationship: "related-to", reason: "They co-occur" }] }],
+      rMem, "s1", 1,
+    );
+
+    const content = readFileSync(join(rMem, "topics", "a", "CONTEXT.md"), "utf-8");
+    expect(content).toContain("## Related");
+    expect(content).toContain("- [b](CONTEXT.md) — They co-occur");
+
+    rmSync(rDir, { recursive: true, force: true });
   });
 });

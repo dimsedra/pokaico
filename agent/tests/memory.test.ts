@@ -138,16 +138,13 @@ describe("regenerateIndex (issue #3 — mechanical observer)", () => {
     createTopic(dir, "cycling", "Daily bike commute to work.");
     createTopic(dir, "fitness", "User's fitness goals and routines.");
 
-    // Seed topic rows (FK targets) + a stale edge the observer must surface.
+    // Seed topic rows (FK targets).
     db.prepare(
       "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
     ).run("cycling", "memory/topics/cycling/CONTEXT.md");
     db.prepare(
       "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
     ).run("fitness", "memory/topics/fitness/CONTEXT.md");
-    db.prepare(
-      "INSERT INTO edges(from_topic, to_topic, relationship) VALUES (?, ?, ?)",
-    ).run("cycling", "fitness", "related-to");
 
     // Pretend a previous (stale) INDEX.md exists.
     writeFileSync(join(dir, "INDEX.md"), "# Memory Index\n\n- **old-stale-topic**: gone\n", "utf-8");
@@ -158,8 +155,9 @@ describe("regenerateIndex (issue #3 — mechanical observer)", () => {
     expect(content).toContain("cycling");
     expect(content).toContain("Daily bike commute to work.");
     expect(content).toContain("fitness");
-    expect(content).toContain("## Edges");
-    expect(content).toContain("cycling → fitness: related-to");
+    // INDEX.md is a pure topic list — no edge section (edges live in DB + CONTEXT.md ## Related).
+    expect(content).not.toContain("## Edges");
+    expect(content).not.toContain("→");
     // Stale entry must be gone.
     expect(content).not.toContain("old-stale-topic");
   });
@@ -176,28 +174,29 @@ describe("regenerateIndex (issue #3 — mechanical observer)", () => {
     expect(second).toBe(first);
   });
 
-  it("drops edges whose endpoint topic has no directory", () => {
+  it("INDEX.md is a pure topic list (edges only in DB + CONTEXT.md ## Related)", () => {
     const dir = mkdtempSync(join(tmpdir(), "pokaico-regen-edge-"));
     createTopic(dir, "a", "Topic A.");
     db.prepare(
       "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
     ).run("a", "memory/topics/a/CONTEXT.md");
-    // Topic "b" exists in DB (FK holds) but has NO topic directory,
-    // so the observer must drop the dangling edge (a → b).
     db.prepare(
       "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
     ).run("b", "memory/topics/b/CONTEXT.md");
     db.prepare(
-      "INSERT INTO edges(from_topic, to_topic, relationship) VALUES (?, ?, ?)",
-    ).run("a", "b", "related-to");
-    // Directory for "b" intentionally absent (only "a" was created via createTopic).
+      "INSERT INTO edges(from_topic, to_topic, relationship, reason) VALUES (?, ?, ?, ?)",
+    ).run("a", "b", "related-to", "co-occurring");
 
     regenerateIndex(dir, db);
 
     const content = readFileSync(join(dir, "INDEX.md"), "utf-8");
     expect(content).toContain("a");
-    expect(content).not.toContain("a → b");
+    // INDEX.md has no edge section — edges live in DB only.
     expect(content).not.toContain("## Edges");
+    expect(content).not.toContain("a → b");
+    // DB edge still exists (not removed — DB is the canonical edge store).
+    const edgeCount = db.prepare("SELECT COUNT(*) c FROM edges").get() as { c: number };
+    expect(edgeCount.c).toBe(1);
   });
 
   it("drops a deleted topic directory from the regenerated INDEX.md", () => {

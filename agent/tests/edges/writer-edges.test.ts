@@ -28,7 +28,7 @@ describe("E3: consecutive topic updates replace CONTEXT.md (compact-on-update)",
     const resourcesDir = join(memoryDir, "topics", "growing-topic", "resources");
 
     // Update replaces the file with the (already-compacted) content — no append/merge.
-    expect(content.trim()).toBe("Update #50: More learning progress recorded here.");
+    expect(content.trim()).toBe("[src:s51:2050]\n\nUpdate #50: More learning progress recorded here.");
     expect(content).not.toContain("Initial state");
     expect(content).not.toContain("Update #1:");
     // No overflow supplied → no resources/ directory created.

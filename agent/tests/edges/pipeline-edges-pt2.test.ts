@@ -131,7 +131,8 @@ describe("E3 v2: Large content updates replace the file (compact-on-update)", ()
     const resourcesPath = join(mem, "topics", "big-topic", "resources");
 
     // Each update replaces the file — only the last update survives, no overflow.
-    expect(content.startsWith("Update #30:")).toBe(true);
+    expect(content.startsWith("[src:s30:30]")).toBe(true);
+    expect(content).toContain("Update #30:");
     expect(content).not.toContain("Initial topic");
     expect(content).not.toContain("Update #1:");
     expect(existsSync(resourcesPath)).toBe(false);

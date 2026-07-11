@@ -42,8 +42,8 @@ memory/
      │   └─ CONTEXT.md          ← foundational — updated every session
      ├─ user-background/
      │   └─ CONTEXT.md          ← foundational
-     ├─ user-communication/
-     │   └─ CONTEXT.md          ← foundational
+     ├─ user-patterns/
+     │   └─ CONTEXT.md          ← foundational (recurring patterns)
      └─ ...
 ```
 

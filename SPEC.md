@@ -234,9 +234,9 @@ On session open, the agent receives:
 
   | Topic | Path | What it captures |
   |---|---|---|
-  | `user-profile` | `memory/topics/user-profile/CONTEXT.md` | Cognitive/behavioural profile: personality traits, thinking patterns, values, decision-making style, emotional triggers, communication preferences. |
+  | `user-profile` | `memory/topics/user-profile/CONTEXT.md` | Cognitive/behavioural profile: personality traits, thinking patterns, values, decision-making style, emotional triggers, tone preferences, pet peeves, response style. |
   | `user-background` | `memory/topics/user-background/CONTEXT.md` | Bio: name, location, timezone, occupation, languages. Work: role, industry, career goals. Life: living situation, key relationships. |
-  | `user-communication` | `memory/topics/user-communication/CONTEXT.md` | Tone preferences, how they like to be addressed, pet peeves, response style, turn-off topics. |
+  | `user-patterns` | `memory/topics/user-patterns/CONTEXT.md` | Recurring behaviour patterns detected over time — used to propose skill creation (v0.2) and inform agentic decisions. |
 
   After summarization target, content that genuinely cannot be condensed spills to `resources/` with a cross-link edge and inline reference in CONTEXT.md.
 

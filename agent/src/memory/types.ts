@@ -4,6 +4,7 @@ export type TopicSegment = {
   title: string;
   summary: string;
   keyPoints: string[];
+  relatedTo?: { topicIndex: number; reason: string }[];
 };
 
 export type SummaryOutput = {
@@ -36,6 +37,7 @@ export type CompactOverflow = {
 export type CompactEdge = {
   toTopic: string;
   relationship: string;
+  reason?: string;
 };
 
 export type CompactResult = {

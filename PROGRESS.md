@@ -53,7 +53,7 @@
 
 - [x] Session pointer guard: read `last_extracted_message_ts`, skip if no new messages
 - [x] Summarization: LLM call to condense session into structured summary
-- [x] `refresh_foundational`: always runs on 3 shipped topics (`user-profile`, `user-background`, `user-communication`), 700-token target each
+- [x] `refresh_foundational`: always runs on 3 shipped topics (`user-profile`, `user-background`, `user-patterns`), 700-token target each
 - [x] `extract_topics`: similarity-gated against existing topics, create-or-update, excludes foundational, slug-collision guard
 - [x] Write phase: per-topic async mutex, per-session async mutex, provenance markers `[src:sessionId:timestamp]`, action types (`create`, `update`, `external`), topicId validation, idempotency guard, resources/ for external artifacts only (no auto-overflow)
 - [x] Re-index: rebuild FTS5 + embedding vectors for updated topic with dedup check, char/4 token estimation
@@ -117,15 +117,25 @@ Tracking issues:
 
 **Urutan eksekusi (disepakati): 3 → 4 → 2 → 1.** Gardening = knowledge-graph UI v0.2+, di luar scope v0.1.
 
-### Reopened — Foundational topics konsolidasi [#7](https://github.com/dimsedra/pokaico/issues/7)
+### Reopened — Foundational topics konsolidasi [#7](https://github.com/dimsedra/pokaico/issues/7) [✅]
 
 **Reason:** Menyediakan slot untuk `user-patterns` (trigger skill creation v0.2). `user-communication` di-merge ke `user-profile`, konten tidak hilang — hanya 3 topik jadi:
 
-- [ ] `user-profile` (merged: personality + communication preferences + triggers + values)
-- [ ] `user-background` (tetap: bio + lokasi + pekerjaan + karir)
-- [ ] `user-patterns` (baru: pola berulang untuk trigger skill creation)
+- [x] `user-profile` (merged: personality + communication preferences + triggers + values)
+- [x] `user-background` (tetap: bio + lokasi + pekerjaan + karir)
+- [x] `user-patterns` (baru: pola berulang untuk trigger skill creation)
 
-**Blocker Phase 4:** Issue #7 harus selesai sebelum Group A Phase 4 bisa dimulai.
+---
+
+### Reopened — Session connectors for user-patterns + prompt definitions [#9](https://github.com/dimsedra/pokaico/issues/9)
+
+**Reason:** Foundational topics perlu definisi di prompt (biar LLM tau persis isi tiap topik). `user-patterns` juga perlu session tags `[session:id]` untuk melacak bukti lintas session sebagai bobot pola.
+
+- [x] `foundational.ts` — prompt definitions + `sessionId` param + session tag instructions
+- [x] `pipeline.ts` — pass `sessionId` ke `refreshFoundational`
+- [x] Tests — update foundational.test.ts, pipeline.test.ts
+
+**Tidak berubah:** `user-profile` dan `user-background` tanpa session tags (fakta stabil, tidak butuh bobot)
 
 ---
 
@@ -133,7 +143,7 @@ Tracking issues:
 
 **Scope:** Mastra conversational agent, 6 retrieval tools as Mastra tools, system prompt with INDEX-primary routing, native Tauri IPC bridge.
 **Arsitektur komunikasi:** Frontend ↔ Tauri Rust command ↔ stdin/stdout ↔ Node sidecar. Native IPC sejak awal agar tak perlu migrasi di v0.2.
-**Blocker Phase 4:** Issue [#7](https://github.com/dimsedra/pokaico/issues/7) (Foundational topics konsolidasi) dan [#8](https://github.com/dimsedra/pokaico/issues/8) (Cross-topic edges) harus selesai sebelum Group A dimulai.
+**Blocker Phase 4:** Issue [#7](https://github.com/dimsedra/pokaico/issues/7) (Foundational topics konsolidasi), [#8](https://github.com/dimsedra/pokaico/issues/8) (Cross-topic edges), dan [#9](https://github.com/dimsedra/pokaico/issues/9) (Session connectors) harus selesai sebelum Group A dimulai.
 
 ---
 

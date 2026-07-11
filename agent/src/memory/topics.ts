@@ -117,20 +117,8 @@ export function regenerateIndex(memoryDir: string, db: PokaicoDb): void {
 
   const topicLines = topics.map((t) => `- **${t.topicId}**: ${t.summary || "(no summary)"}`);
 
-  const edges = readEdges(db).filter(
-    (e) =>
-      existsSync(join(memoryDir, "topics", e.fromTopic)) &&
-      existsSync(join(memoryDir, "topics", e.toTopic)),
-  );
-  const edgeLines = edges.map(
-    (e) => `- ${e.fromTopic} → ${e.toTopic}: ${e.relationship}`,
-  );
-
   const sections = [`# Memory Index`, ""];
   sections.push(...(topicLines.length > 0 ? topicLines : ["_(no topics yet)_"]));
-  if (edgeLines.length > 0) {
-    sections.push("", "## Edges", ...edgeLines);
-  }
   sections.push("");
 
   // Atomic write: render to a temp file in the same directory, then rename into

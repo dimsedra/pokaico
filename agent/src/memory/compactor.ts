@@ -26,9 +26,10 @@ const compactSchema = z.object({
       z.object({
         toTopic: z.string().describe("The related topic id"),
         relationship: z.string().describe("Free-text relationship label, e.g. 'related-to'"),
+        reason: z.string().optional().describe("Brief explanation of why these topics are related"),
       }),
     )
-    .describe("Cross-topic connections to preserve or add. Empty if none.")
+    .describe("Cross-topic connections to preserve or add. Include a brief reason for each connection. Empty if none.")
     .default([]),
 });
 
@@ -46,7 +47,7 @@ export async function compact(input: CompactInput): Promise<CompactResult> {
   const edgesSection =
     existingEdges.length > 0
       ? `\n\nExisting connections to preserve unless clearly obsolete:\n${existingEdges
-          .map((e) => `- ${e.relationship} -> ${e.toTopic}`)
+          .map((e) => `- ${e.relationship} -> ${e.toTopic}: ${e.reason ?? "(no reason given)"}`)
           .join("\n")}`
       : "";
 
@@ -59,7 +60,7 @@ Refine the CURRENT content by integrating the NEW information:
 - Keep it high-level and dense; drop redundant, stale, or contradicting statements (prefer the newer fact on conflict).
 - Stay within the ${cap}-token cap.
 - Only if essential detail genuinely cannot be condensed without losing meaning, move that detail into an overflow resource file and leave an inline reference like "See [notes](resources/<filename>)" in the context.
-- Preserve meaningful connections to other topics/resources.
+- Preserve meaningful connections to other topics/resources. For each edge you output, include a brief reason explaining the relationship.
 
 CURRENT CONTEXT.md:
 ${current || "(empty)"}
