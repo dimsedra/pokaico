@@ -68,6 +68,38 @@ describe("reindexer", () => {
     expect(row.updated_at).toBeGreaterThan(0);
   });
 
+  it("purges stale chunks for a topic before re-indexing", async () => {
+    const topicId = "purge-me";
+    const topicDir = join(memoryDir(), "topics", topicId);
+    mkdirSync(topicDir, { recursive: true });
+    writeFileSync(join(topicDir, "CONTEXT.md"), "New content v2.", "utf-8");
+
+    const buf = Buffer.alloc(384 * 4);
+    db.prepare("INSERT INTO chunk_vec(embedding) VALUES (?)").run(buf);
+    const rowid = (db.prepare("SELECT last_insert_rowid() as id").get() as { id: number }).id;
+    db.prepare(
+      "INSERT INTO chunk_fts(rowid, content, topic_id, source_path) VALUES (?, ?, ?, ?)",
+    ).run(rowid, "STALE OLD CONTENT", topicId, `memory/topics/${topicId}/CONTEXT.md`);
+
+    const before = db
+      .prepare("SELECT COUNT(*) c FROM chunk_fts WHERE topic_id = ?")
+      .get(topicId) as { c: number };
+    expect(before.c).toBe(1);
+
+    const indexTopic = vi.fn().mockResolvedValue(undefined);
+    await reindexTopics([topicId], memoryDir(), db, indexTopic);
+
+    const stale = db
+      .prepare("SELECT COUNT(*) c FROM chunk_fts WHERE topic_id = ? AND content = ?")
+      .get(topicId, "STALE OLD CONTENT") as { c: number };
+    expect(stale.c).toBe(0);
+
+    const vecCount = db.prepare("SELECT COUNT(*) c FROM chunk_vec WHERE rowid = ?").get(rowid) as {
+      c: number;
+    };
+    expect(vecCount.c).toBe(0);
+  });
+
   it("creates topic row if not exists", async () => {
     const topicDir = join(memoryDir(), "topics", "new-topic");
     mkdirSync(topicDir, { recursive: true });

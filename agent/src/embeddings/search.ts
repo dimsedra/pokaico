@@ -21,6 +21,21 @@ export type HybridOptions = {
   vectorWeight?: number;
 };
 
+export function purgeTopicChunks(db: PokaicoDb, topicId: string): void {
+  const rows = db
+    .prepare("SELECT rowid FROM chunk_fts WHERE topic_id = ?")
+    .all(topicId) as { rowid: number }[];
+  if (rows.length === 0) return;
+
+  const purge = db.transaction(() => {
+    for (const r of rows) {
+      db.prepare("DELETE FROM chunk_vec WHERE rowid = ?").run(r.rowid);
+    }
+    db.prepare("DELETE FROM chunk_fts WHERE topic_id = ?").run(topicId);
+  });
+  purge();
+}
+
 export function ftsSearch(db: PokaicoDb, query: string): FtsResult[] {
   try {
     const rows = db

@@ -2,6 +2,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { PokaicoDb } from "../db/client";
 import { countTokens } from "./tokens";
+import { purgeTopicChunks } from "../embeddings/search";
 
 function contextPath(memoryDir: string, topicId: string): string {
   return join(memoryDir, "topics", topicId, "CONTEXT.md");
@@ -21,6 +22,9 @@ export async function reindexTopics(
     // Read CONTEXT.md
     const cp = contextPath(memoryDir, topicId);
     if (!existsSync(cp)) continue;
+
+    // Remove any prior chunks for this topic so stale versions don't linger.
+    purgeTopicChunks(db, topicId);
 
     const contextContent = readFileSync(cp, "utf-8");
     await indexTopic(topicId, contextContent);
