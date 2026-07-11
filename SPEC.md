@@ -184,12 +184,14 @@ Your spec already describes this well; here's it translated into concrete trigge
 2. **Guard:** `has_new_messages = latest_ts(session) > session_pointers.last_extracted_message_ts`. If false → no-op.
 3. **Summarize transcript** — one LLM call, output used by both sub-pipelines below.
 4. **`refresh_foundational(summary, foundational_topics[])`** — always runs. Sends all foundational CONTEXT.md + summary in one prompt. LLM decides per topic whether new info exists. Returns `[{topicId, newContent | null}]`. Never similarity-gated — foundational topics are too important to leave to a threshold.
-5. **`extract_topics(summary)`** — gated by similarity. Queries `INDEX.md` (excludes foundational topics) for high-similarity existing topics. Match → append/refine that topic's CONTEXT.md. No match → create new topic. If ≥2 topics or resources touched, write cross-link edges in SQLite and inline references in CONTEXT.md (`See [notes](resources/...md)`).
+5. **`extract_topics(summary, indexSlugs?)`** — two-phase:
+   - **Phase A (deterministic, no LLM):** reads INDEX.md (the canonical routing map) before creating anything. If a topic slug already exists in INDEX.md, the system **updates** that topic instead of creating a duplicate. This is the primary gate, replacing the old similarity-threshold approach.
+   - **Phase B (similarity fallback):** only when no INDEX match is found, falls back to embedding/FTS5 similarity search for near-matches. The similarity threshold is now a secondary safety net, not the primary decider.
+   - If ≥2 topics or resources touched, write cross-link edges in SQLite and inline references in CONTEXT.md.
 6. **Write phase** — for each topic needing update, acquire per-topic lock → read current file → attempt to condense new info into the token cap. Overflow to `resources/` is the *last resort*, used only when the LLM judges the content cannot be adequately condensed into CONTEXT.md without losing essential meaning. Each overflow file gets a cross-link edge (`"has-detailed-notes"`) and an inline reference in CONTEXT.md so the agent knows it exists.
 7. **Re-index:** upsert changed topic chunks into `chunk_fts` / `chunk_vec`; update `topics.updated_at`, `topics.token_count`.
-8. **Update pointer:** `session_pointers.last_extracted_message_ts = latest_ts(session)`.
-
-This means every extraction job makes exactly 2 LLM calls (summary + foundational refresh + specific topic extraction can share one, or be 2 total if foundational refresh and topic extraction are separate calls). The cost is bounded and foundational topics stay fresh regardless of similarity scores.
+8. **Observer (INDEX rebuild):** after every extraction, INDEX.md is mechanically rebuilt from the current topic graph — no LLM involved, always overwrites stale content atomically. This keeps the routing map fresh without manual maintenance.
+9. **Update pointer:** `session_pointers.last_extracted_message_ts = latest_ts(session)`.
 
 ### Concurrency
 
@@ -226,8 +228,8 @@ The write side (extraction) populates `memory/` and the SQLite index. The read s
 ### Session start
 
 On session open, the agent receives:
-
 - **System prompt** — static, <500 tokens.
+- **INDEX.md** — the canonical routing map. A compact listing of every topic (one line + summary) plus graph edges. The agent uses this to **route before searching**: if the user's question matches a known topic, the agent already knows where to look without an embedding call.
 - **Foundational topics** — shipped at app init, capped at 700 tokens each, 2100 total. Each is an always-loaded topic that the extraction pipeline also refreshes every cycle (see §6):
 
   | Topic | Path | What it captures |
@@ -246,8 +248,8 @@ Everything else is loaded lazily via tools.
 
 | Tool | Trigger | What it does |
 |---|---|---|
-| `search_topics(query)` | Agent decides user is referencing something stored | Embeds query → `vec0` search on `chunk_vec` + FTS5 `chunk_fts` → returns top‑5 topic IDs + snippets. Agent picks which to read. |
-| `read_topic(topicId)` | Agent wants full context on a topic after search | Reads `memory/topics/<topicId>/CONTEXT.md` — returns full text. If >2500 tokens, returns summary first with option to read details. |
+| `search_topics(query)` | Agent decides user is referencing something stored — and INDEX.md alone wasn't enough | **INDEX-primary route** (lexical match against topic summaries) first; only if that yields nothing, falls back to embedding + FTS5 search. Returns top‑5 topic IDs + snippets. Agent picks which to read. |
+| `read_topic(topicId)` | Agent wants full context on a topic after search or INDEX match | Reads `memory/topics/<topicId>/CONTEXT.md` — returns full text. If >2500 tokens, returns summary first with option to read details. |
 | `list_topics(filter?)` | Agent wants to browse the topic graph | Queries `INDEX.md` or `topics` table. Supports filter: `foundational`, `recently_updated`, or prefix match. |
 | `ingest_resource(source, topicId)` | User shares/uploadsa file via chat | Copies original to `memory/topics/<topicId>/resources/<filename>`. Runs Xberg extraction: text-based formats → saves `<filename>.md`; images/scanned PDF → if OCR enabled, saves OCR output as `<filename>.md`. Agent never touches filesystem — all done programmatically. Returns extracted text. |
 | `read_resource(path)` | Agent needs a resource | Reads companion `.md` if present (e.g. `resume.md` alongside `resume.pdf`). Falls back to original file. Xberg handles format detection — agent receives clean text regardless of source format. |
@@ -257,15 +259,17 @@ Everything else is loaded lazily via tools.
 
 ```
 User message
-  └→ Agent system prompt has foundational topics + recent summary
+  └→ Agent system prompt has INDEX.md + foundational topics + recent summary
       └→ Agent generates response — if it needs stored context:
-          └─ search_topics("user's work schedule") → sees topic "work/schedule"
-              └─ read_topic("work/schedule") → full context
-                  └─ [optional] read_resource("work/schedule/resources/calendar.md")
-                      └→ Agent incorporates into response
+          └─ Match against INDEX.md (lexical) — fast, zero model cost
+              ├─ Match found → read_topic(topicId) → full context → incorporate
+              └─ No match → search_topics("user's work schedule") → embedding/FTS5
+                  └─ read_topic("work/schedule") → full context
+                      └─ [optional] read_resource("work/schedule/resources/calendar.md")
+                          └→ Agent incorporates into response
 ```
 
-The agent is *not* forced to use tools. For simple queries ("what's my name?") the foundational topics in the prompt suffice. Tools are there for depth — the agent decides when to invoke them.
+The agent is *not* forced to use tools. For simple queries ("what's my name?") the foundational topics in the prompt suffice. Tools are there for depth — the agent decides when to invoke them. The key architectural change: **INDEX.md is the primary router**, making the common case (known topic) fast and deterministic. Embedding/FTS5 is only consulted when the routing map doesn't contain a match.
 
 ### Why this design
 
@@ -329,7 +333,7 @@ pokai/
 ├── journal/                    # Immutable transcripts (source of truth for what was said)
 │   └── 2026-07-08-<session>.md
 ├── memory/                     # Derived synthesis (built from journal/)
-│   ├── INDEX.md
+│   ├── INDEX.md                    # PRIMARY routing map (built mechanically after every extraction)
 │   └── topics/
 │       └── <topic>/
 │           ├── CONTEXT.md
