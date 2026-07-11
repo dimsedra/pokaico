@@ -47,7 +47,7 @@ memory/
      └─ ...
 ```
 
-The companion reads from these files. When you ask about hiking, it already knows. When your life changes, the files update. No prompt engineering. Just a system that pays attention.
+The companion reads from these files. It first checks `INDEX.md` — a compact routing map of every topic and their connections. If it finds a match, it reads the topic's `CONTEXT.md` directly from the filesystem. No embedding call, no vector search. Just fast, deterministic file reads. When the routing map doesn't have an answer, it falls back to hybrid search (vector + FTS5) as a secondary option. But the common path is a direct read — your pokai goes straight to the right file and reads what it needs.
 
 You can browse the topics any time. Edit them. Delete them. They're just folders and markdown — yours to keep, yours to understand.
 
@@ -81,7 +81,7 @@ Pokaico isn't:
 
 **topics** — folders of CONTEXT.md files. Organized. Searchable. Updated every session. Never cluttered because old content overflows to resources/ instead of endless accumulation.
 
-**tools** — `search_topics`, `read_topic`, `list_topics`, `read_resource`, `read_session`, and `ingest_resource` let your pokai find exactly what it needs, right when it matters. INDEX-primary routing (fast, deterministic) with hybrid search fallback.
+**tools** — retrieval is a two-tier system. `INDEX.md` is the primary router: the agent matches your question against topic summaries using simple word overlap (fast, deterministic, zero model cost). When that doesn't find a match, it falls back to `search_topics` (hybrid vector + FTS5). Other tools like `read_topic`, `list_topics`, `read_resource`, `read_session`, and `ingest_resource` handle everything else — reading content, browsing the graph, and importing files.
 
 **all local** — SQLite + FTS5 + sqlite-vec for fast retrieval. E5-small for embeddings (384-dim, multilingual, CPU-friendly). No API keys required for search.
 
