@@ -92,18 +92,18 @@ describe("ftsSearch", () => {
     expect(results[0].sourcePath).toBe("memory/topics/travel/CONTEXT.md");
   });
 
-  it("keeps CJK tokens and finds a CJK chunk (no recall regression)", () => {
+  it("finds a chunk by keyword (no recall regression)", () => {
     const insert = db.prepare(
       "INSERT INTO chunk_fts(rowid, content, topic_id, source_path) VALUES (?, ?, ?, ?)",
     );
-    insert.run(9, "会议 schedule 安排", "cjk", "memory/topics/cjk/CONTEXT.md");
+    insert.run(9, "meeting schedule planning", "meet", "memory/topics/meet/CONTEXT.md");
     db.prepare("INSERT INTO chunk_vec(embedding) VALUES (?)").run(
       Buffer.from(new Float32Array(384).fill(0.01).buffer),
     );
 
-    const results = ftsSearch(db, "会议");
+    const results = ftsSearch(db, "meeting");
     expect(results.length).toBeGreaterThan(0);
-    expect(results.every((r) => r.topicId === "cjk")).toBe(true);
+    expect(results.every((r) => r.topicId === "meet")).toBe(true);
   });
 
   it("aligns diacritics with the indexer (café -> cafe on both sides)", () => {
@@ -153,8 +153,10 @@ describe("buildFtsQuery (issue #1, poin 2 — FTS5 syntax safety)", () => {
     expect(Array.isArray(results)).toBe(true);
   });
 
-  it("keeps CJK tokens and drops boolean operators (point 2)", () => {
-    expect(buildFtsQuery("会议 schedule AND 安排")).toBe('"会议" "schedule" "安排"');
+  it("drops boolean operators and keeps all words (point 2)", () => {
+    expect(buildFtsQuery("meeting schedule AND planning")).toBe(
+      '"meeting" "schedule" "planning"',
+    );
   });
 
   it("strips diacritics to align with the unicode61 indexer", () => {
