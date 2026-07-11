@@ -128,6 +128,10 @@ Tracking issues:
 
 ### Group A — Foundation (back end, pure vitest)
 - [ ] **Task 1 — Provider registry** (`agent/src/models/provider.ts`): config provider + API key + model aktif. Default Gemini dari `.env`. Config JSON loader/saver.
+  - **models.dev** (`@opencode-ai/models`) → untuk UI model selector (filter LLM via `modalities.output.includes("text")`)
+  - **Mastra model router** → agent runtime pakai format `"provider/model"` (Mastra resolve ke AI SDK)
+  - Keduanya dipakai, peran berbeda: models.dev buat katalog/pricing, Mastra buat jalanin model
+  - Mastra v1.18.2 depend pada `@mastra/core` (belum terinstall) — selesaikan di Task 3
 - [ ] **Task 2 — System prompt builder** (`agent/src/mastra/prompt.ts`): `buildPrompt(memoryDir, query?)` → inject INDEX.md + 3 foundational topics + recent journal summary. Output string instruksi agent.
 - [ ] **Task 3 — Agent factory** (`agent/src/mastra/index.ts`): `createAgent({ model, tools, memoryDir })` → return Mastra agent tanpa tools (factory terima tools sbg parameter).
 
