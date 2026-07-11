@@ -7,6 +7,8 @@ import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
 import { createPythonEmbeddingModel } from "../src/embeddings/model";
 import { createEmbeddingService } from "../src/embeddings/service";
 import { processSession } from "../src/memory/pipeline";
+import { compact } from "../src/memory/compactor";
+import { countTokens } from "../src/memory/tokens";
 
 const hasApiKey = !!process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 
@@ -205,5 +207,35 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     } else {
       console.log(`  NOTE: no update (${creates.length} creates instead). Similarity threshold may need tuning.`);
     }
+  }, 120_000);
+
+  it("Test 4: compaction condenses oversized content within the cap (real Gemini)", async () => {
+    const cap = 300;
+    const current = Array.from(
+      { length: 40 },
+      (_, i) =>
+        `Note ${i}: The user enjoys long-distance road cycling on weekends and tracks every ride in great detail including heart rate, cadence, elevation, and weather conditions for each segment.`,
+    ).join("\n");
+
+    expect(countTokens(current)).toBeGreaterThan(cap * 2);
+
+    const model = google("gemini-3.1-flash-lite-preview");
+    const result = await compact({
+      current,
+      newInfo: "The user just completed their first 100km ride and felt great afterwards.",
+      cap,
+      model: model as never,
+    });
+
+    const contextTokens = countTokens(result.context);
+    console.log("\nE2E Test 4 - compaction:");
+    console.log("  input tokens:", countTokens(current));
+    console.log("  output tokens:", contextTokens, "(cap", cap + ")");
+    console.log("  overflow files:", result.overflow.length);
+
+    // Compacted context must be far smaller than input and near/under the cap.
+    expect(contextTokens).toBeLessThan(countTokens(current));
+    expect(contextTokens).toBeLessThanOrEqual(cap * 1.3);
+    expect(result.context.length).toBeGreaterThan(0);
   }, 120_000);
 });
