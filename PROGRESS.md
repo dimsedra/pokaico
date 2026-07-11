@@ -84,7 +84,7 @@ Menggantikan backlog "Topic re-consolidation" (append-only + provenance markers)
 - [x] Slice 6 — E2E smoke (Gemini asli): `compact()` mengecilkan konten oversized ke dalam cap
 - **Test:** 201 passed, 4 skipped (dijalankan dari `agent/`). Known-limitation tetap: kalibrasi `SIMILARITY_THRESHOLD` (E2E Test 3 update path) & sanitasi karakter khusus FTS5 (E2E Test 2 retrieval)
 
-### Phase 3b: INDEX-primary routing + mechanical observer [OPEN — diissue #2/#3/#4]
+### Phase 3b: INDEX-primary routing + mechanical observer [✅ — issues #2/#3/#4 closed; #1 poin 2/3/4 closed]
 
 Keputusan arsitektur (dikunci sesi ini): routing retrieval **tidak** lagi bergantung skor similarity `combinedScore` (`SIMILARITY_THRESHOLD=0.35`, `extract.ts:4` — rapuh, sering meleset → duplikat topik). Sebaliknya:
 
@@ -94,12 +94,26 @@ Keputusan arsitektur (dikunci sesi ini): routing retrieval **tidak** lagi bergan
 - **Sanitasi + OR-semantics FTS5** (issue #1 poin 2) tetap relevan sbg **fallback hardening**, bukan penentu utama.
 - **Gardening DITUNDA** v0.1 — dan didefinisikan ulang sbg **user-driven KNOWLEDGE-GRAPH UI (v0.2+)**, BUKAN autonomous LLM job. Penataan memori = preferensi user (rapah/tak rapah beda tiap orang); agent tak boleh memutuskannya sendiri. v0.2+: backend baca `topics`+`edges` → ekspos sbg graph (node+edge+label); UI kanvas interaktif utk navigasi + aksi (merge 2 node, split 1→2, edit/hapus edge, hapus resource, konsolidasi topik) — user yg klik, backend/LLM yg eksekusi. v0.1 cukup: duplikat dihalang di sumber (Langkah 4) + `INDEX.md` selalu segar (Langkah 3). Lihat Phase 5 (Frontend) sbg timba graph UI.
 
+**Implementasi (branch `feat/index-primary-routing`):**
+
+- [x] **#3 — Observer mekanis** (`regenerateIndex`): rebuild `INDEX.md` dari filesystem + tabel `edges`, tanpa LLM, atomic write (temp+rename), dibungkus try/catch agar tak menggagalkan ekstraksi; dipanggil di pipeline Step 6c. Menggantikan `ensureIndex` yg lazy. (commits `09027bc`, `65bb7af`)
+- [x] **#4 — Audit sebelum create** (`resolveDeterministic` + `parseIndex`): ekstraksi baca `INDEX.md` via `parseIndex` → `indexSlugs` (Step 4), lalu `extract_topics` UPDATE slug cocok (exact / single numeric-suffixed sibling), self-guard foundational, skip judul >60-char & sibling ambigu → fallback embedding. (commits `f465dc9`, `a28fd41`)
+- [x] **#2 — Router INDEX-primary** (`retrieveMemory`/`routeTopics`/`loadRoutedContext`): routing leksikal (Jaccard) dari `INDEX.md` sbg PRIMARY; `searchSimilar` sbg SECONDARY fallback saat INDEX kosong. Seam publik `retrieveMemory` disediakan sbg entry point yg reachable & teruji. (commit `3b300f5`)
+- [x] **#1 poin 2/3/4 — Hardening fallback**: `buildFtsQuery` sanitasi sintaks FTS5 + **OR-semantics** (multi-token match) + align diakritik dgn tokenizer `unicode61`; `SIMILARITY_THRESHOLD` → `FALLBACK_MATCH_THRESHOLD` (gate *hybrid combined score*, bukan penentu utama); jalur single-segment pakai `embMatch.score`. (commits `8123bee`, `fe865a1`, `5619ad8`)
+- [x] **Tests**: 250+ passing offline; gap verifikasi ditutup — negative-path observer (throw/atomic/deletion), second-session update regression, guard >60-char & sibling ambigu, `parseIndex` tolerance, OR-semantics, `retrieveMemory`. (commit `audit-fixes`)
+
+**Catatan gap (bukan blocker, didokumentasikan):**
+
+- Dedup masih **partial**: judul beda kata yg slugify berbeda tetap `create`; gate `FALLBACK_MATCH_THRESHOLD` (yg "rapuh") tetap jadi satu-satunya net untuk near-duplicate di luar jalur deterministic. Diterima sbg batasan v0.1.
+- Read-path router (`retrieveMemory`) sudah reachable & teruji sbg seam, tapi **wiring ke agent terjadi di Phase 4** (belum ada Mastra agent). Phase 4 wajib memanggil `retrieveMemory` saat session start.
+- `ensureIndex` kini dead code (diganti `regenerateIndex`); biarkan atau hapus di Phase 4.
+
 Tracking issues:
-- [#2](https://github.com/dimsedra/pokaico/issues/2) — INDEX.md sbg router utama + cek deterministik sebelum create
-- [#3](https://github.com/dimsedra/pokaico/issues/3) — Observer mekanis regenerate INDEX.md pasca-ekstraksi
-- [#4](https://github.com/dimsedra/pokaico/issues/4) — Audit background ekstraksi jurnal: baca INDEX.md sebelum create (pintu masuk #2/#1)
+- [x] [#2](https://github.com/dimsedra/pokaico/issues/2) — INDEX.md sbg router utama + cek deterministik sebelum create ✅
+- [x] [#3](https://github.com/dimsedra/pokaico/issues/3) — Observer mekanis regenerate INDEX.md pasca-ekstraksi ✅
+- [x] [#4](https://github.com/dimsedra/pokaico/issues/4) — Audit background ekstraksi jurnal: baca INDEX.md sebelum create (pintu masuk #2/#1) ✅
 - [#5](https://github.com/dimsedra/pokaico/issues/5) — Memory management UI: knowledge-graph (v0.2+), user-driven, backend/LLM eksekutor
-- (Latar: [#1](https://github.com/dimsedra/pokaico/issues/1) poin 2/3/4 — risiko korektnes awal; poin 1=stale chunk SUDAH selesai di Slice 4)
+- [x] (Latar: [#1](https://github.com/dimsedra/pokaico/issues/1) poin 2/3/4 — risiko korektnes awal; poin 1=stale chunk SUDAH selesai di Slice 4) ✅
 
 **Urutan eksekusi (disepakati): 3 → 4 → 2 → 1.** Gardening = knowledge-graph UI v0.2+, di luar scope v0.1.
 

@@ -292,3 +292,44 @@ describe("extractTopics", () => {
     expect(FALLBACK_MATCH_THRESHOLD).toBe(0.35);
   });
 });
+
+describe("extractTopics deterministic guards (issue #4)", () => {
+  // A 60-char slug, simulating a previously-created long topic whose title was
+  // truncated by slugify.
+  const longSlug = "a".repeat(60);
+
+  it("does NOT deterministically update a >60-char title even if its slug collides", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexSlugs = new Set([longSlug]);
+    // Title > 60 chars whose slugify result equals longSlug (collision). Without
+    // the >60 guard this would be a deterministic UPDATE; with it, it falls
+    // through to the embedding fallback instead.
+    const summary = {
+      summary: "long",
+      keyPoints: ["long"],
+      topics: [{ title: `${longSlug} second`, summary: "long", keyPoints: ["long"] }],
+    };
+
+    const result = await extractTopics(summary, [], searchSimilar, indexSlugs);
+
+    expect(result[0].action).toBe("create");
+    expect(searchSimilar).toHaveBeenCalled();
+  });
+
+  it("does NOT deterministically update when multiple ambiguous siblings exist", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexSlugs = new Set(["bike-purchase-1", "bike-purchase-2"]);
+    const summary = {
+      summary: "bike",
+      keyPoints: ["bike"],
+      topics: [{ title: "Bike Purchase", summary: "bike", keyPoints: ["bike"] }],
+    };
+
+    const result = await extractTopics(summary, [], searchSimilar, indexSlugs);
+
+    expect(result[0].action).toBe("create");
+    expect(result[0].topicId).not.toBe("bike-purchase-1");
+    expect(result[0].topicId).not.toBe("bike-purchase-2");
+    expect(searchSimilar).toHaveBeenCalled();
+  });
+});

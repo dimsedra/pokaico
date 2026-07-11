@@ -19,7 +19,13 @@ export type FtsResult = {
 // indexed content) and strips diacritics (é -> e), exactly as content was
 // indexed. Skipping this alignment would silently drop recall for accented or
 // non-ASCII text. Post-condition: returns "" for blank input, otherwise a
-// string of whitespace-joined `"token"` phrases (no raw FTS5 syntax leaks).
+// string of `"token"` phrases joined by OR (so a multi-word query matches a
+// chunk containing ANY token — issue #1 point 2's OR-semantics; the AND
+// default would rarely match long summaries).
+//
+// OR-semantics note: FTS5 treats adjacent phrases as AND, so we insert an
+// explicit ` OR ` between tokens. A keyword-only fallback that required every
+// token to be present would almost never fire for long user summaries.
 const FTS_OPERATORS = new Set(["AND", "OR", "NOT", "NEAR"]);
 
 export function buildFtsQuery(raw: string): string {
@@ -32,7 +38,7 @@ export function buildFtsQuery(raw: string): string {
     .map((t) => t.trim())
     .filter((t) => t.length > 0 && !FTS_OPERATORS.has(t.toUpperCase()));
   const quoted = tokens.map((t) => `"${t}"`);
-  return quoted.join(" ");
+  return quoted.join(" OR ");
 }
 
 export type HybridResult = {

@@ -111,3 +111,23 @@ export async function loadRoutedContext(
   }
   return parts.join("\n\n");
 }
+
+/**
+ * Public memory-retrieval seam for the agent (issue #2). This is the single
+ * reachable entry point the agent calls to pull memory context at session
+ * start: it routes the query through the INDEX-primary router
+ * (`routeTopics`) and loads the matched CONTEXT.md blocks. Phase 4 wires this
+ * into the agent's read path; exporting it here keeps the router reachable and
+ * tested rather than dead code.
+ */
+export async function retrieveMemory(
+  memoryDir: string,
+  query: string,
+  opts?: {
+    searchSimilar?: (q: string, limit?: number) => Promise<SearchResult[]>;
+    limit?: number;
+    topN?: number;
+  },
+): Promise<string> {
+  return loadRoutedContext(memoryDir, query, opts);
+}

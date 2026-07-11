@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createTopic } from "../src/memory/topics";
-import { routeTopics, loadRoutedContext } from "../src/memory/retrieval";
+import { routeTopics, loadRoutedContext, retrieveMemory } from "../src/memory/retrieval";
 
 function writeIndex(dir: string, lines: string[]): void {
   writeFileSync(
@@ -114,6 +114,36 @@ describe("routeTopics (issue #2 — INDEX-primary router)", () => {
     expect(ctx).toContain("# bike-purchase");
     expect(ctx).toContain("Bike purchase context body");
     expect(existsSync(join(dir, "topics", "bike-purchase", "CONTEXT.md"))).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("retrieveMemory (issue #2 — reachable read-path seam)", () => {
+  it("routes INDEX-primary and loads the matched topic CONTEXT without embedding", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-retrieve-"));
+    createTopic(dir, "bike-purchase", "Bike purchase context body");
+    writeIndex(dir, ["- **bike-purchase**: User bought a new bike"]);
+
+    const searchSimilar = vi.fn();
+    const ctx = await retrieveMemory(dir, "bike purchase", { searchSimilar });
+
+    expect(ctx).toContain("# bike-purchase");
+    expect(ctx).toContain("Bike purchase context body");
+    expect(searchSimilar).not.toHaveBeenCalled();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("falls back to searchSimilar when INDEX has no lexical match", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-retrieve-fb-"));
+    createTopic(dir, "fitness", "Fitness context body");
+    writeIndex(dir, ["- **bike-purchase**: User bought a new bike"]);
+
+    const searchSimilar = vi.fn().mockResolvedValue([fakeHit("fitness", 0.95)]);
+    const ctx = await retrieveMemory(dir, "zzz qqq", { searchSimilar });
+
+    expect(ctx).toContain("# fitness");
+    expect(ctx).toContain("Fitness context body");
+    expect(searchSimilar).toHaveBeenCalledOnce();
     rmSync(dir, { recursive: true, force: true });
   });
 });

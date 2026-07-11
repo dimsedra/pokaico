@@ -128,12 +128,12 @@ describe("ftsSearch", () => {
 
 describe("buildFtsQuery (issue #1, poin 2 — FTS5 syntax safety)", () => {
   it("strips FTS5 syntax chars and quotes each token", () => {
-    expect(buildFtsQuery("I love C++ and Go!")).toBe('"I" "love" "C" "Go"');
+    expect(buildFtsQuery("I love C++ and Go!")).toBe('"I" OR "love" OR "C" OR "Go"');
   });
 
-  it("drops boolean operators (AND/OR/NOT/NEAR)", () => {
-    expect(buildFtsQuery("vacation AND Paris")).toBe('"vacation" "Paris"');
-    expect(buildFtsQuery("a OR b NOT c")).toBe('"a" "b" "c"');
+  it("drops boolean operators and joins with OR (point 2)", () => {
+    expect(buildFtsQuery("vacation AND Paris")).toBe('"vacation" OR "Paris"');
+    expect(buildFtsQuery("a OR b NOT c")).toBe('"a" OR "b" OR "c"');
   });
 
   it("returns empty string for blank input", () => {
@@ -143,9 +143,11 @@ describe("buildFtsQuery (issue #1, poin 2 — FTS5 syntax safety)", () => {
 
   it("recovers a real token hidden inside broken syntax (no silent kill)", () => {
     // Raw '"vacation" AND (Paris)' used to crash FTS5 -> swallowed -> []
+    // After sanitization it becomes '"vacation" OR "Paris""; the travel chunk
+    // must still be found (OR may also return the family chunk with "vacation").
     const results = ftsSearch(db, '"vacation" AND (Paris)');
     expect(results.length).toBeGreaterThan(0);
-    expect(results.every((r) => r.topicId === "travel")).toBe(true);
+    expect(results.some((r) => r.topicId === "travel")).toBe(true);
   });
 
   it("does not crash on a leading NOT operator", () => {
@@ -153,21 +155,37 @@ describe("buildFtsQuery (issue #1, poin 2 — FTS5 syntax safety)", () => {
     expect(Array.isArray(results)).toBe(true);
   });
 
-  it("drops boolean operators and keeps all words (point 2)", () => {
+  it("joins multi-word tokens with OR", () => {
     expect(buildFtsQuery("meeting schedule AND planning")).toBe(
-      '"meeting" "schedule" "planning"',
+      '"meeting" OR "schedule" OR "planning"',
     );
+  });
+
+  it("OR-semantics matches a chunk containing only some tokens", () => {
+    const insert = db.prepare(
+      "INSERT INTO chunk_fts(rowid, content, topic_id, source_path) VALUES (?, ?, ?, ?)",
+    );
+    insert.run(11, "Tokyo is a great city to visit", "tokyo", "memory/topics/tokyo/CONTEXT.md");
+    db.prepare("INSERT INTO chunk_vec(embedding) VALUES (?)").run(
+      Buffer.from(new Float32Array(384).fill(0.01).buffer),
+    );
+
+    // With OR, a partial-token query still finds the chunk (AND would return []).
+    const results = ftsSearch(db, "Tokyo banana");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.some((r) => r.topicId === "tokyo")).toBe(true);
   });
 
   it("strips diacritics to align with the unicode61 indexer", () => {
     expect(buildFtsQuery("Café")).toBe('"Cafe"');
   });
 
-  it("output is always well-formed (empty or quoted phrases, no leaked syntax)", () => {
+  it("output is always well-formed (empty or OR-joined quoted phrases, no leaked syntax)", () => {
     const out = buildFtsQuery("a : * (b) OR NEAR c");
     // No raw FTS5 syntax outside the quotes; operators dropped.
-    expect(out).not.toMatch(/(^|\s)(AND|OR|NOT|NEAR)(\s|$)/);
-    expect(out === "" || /^("[^"]+"\s*)+$/.test(out)).toBe(true);
+    expect(out).not.toMatch(/(^|\s)(AND|NOT|NEAR)(\s|$)/);
+    const parts = out.split(" OR ");
+    expect(out === "" || parts.every((p) => /^"[^"]+"$/.test(p))).toBe(true);
   });
 });
 

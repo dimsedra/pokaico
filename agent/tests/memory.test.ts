@@ -199,6 +199,38 @@ describe("regenerateIndex (issue #3 — mechanical observer)", () => {
     expect(content).not.toContain("a → b");
     expect(content).not.toContain("## Edges");
   });
+
+  it("drops a deleted topic directory from the regenerated INDEX.md", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-regen-del-"));
+    createTopic(dir, "a", "Topic A.");
+    createTopic(dir, "temp", "Temporary topic.");
+
+    regenerateIndex(dir, db);
+    expect(parseIndex(dir).map((t) => t.topicId)).toContain("temp");
+
+    // Topic removed from the filesystem — the next regeneration must reflect it.
+    deleteTopic(dir, "temp");
+    regenerateIndex(dir, db);
+
+    const ids = parseIndex(dir).map((t) => t.topicId);
+    expect(ids).toContain("a");
+    expect(ids).not.toContain("temp");
+  });
+
+  it("atomic write produces a complete INDEX.md with no leftover temp file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-regen-atomic-"));
+    createTopic(dir, "a", "Topic A.");
+    const indexPath = join(dir, "INDEX.md");
+    writeFileSync(indexPath, "# Memory Index\n\n- **old**: stale\n", "utf-8");
+
+    // Successful regeneration: old content is replaced, no .tmp artifact.
+    regenerateIndex(dir, db);
+
+    const content = readFileSync(indexPath, "utf-8");
+    expect(content).toContain("a");
+    expect(content).not.toContain("old");
+    expect(existsSync(`${indexPath}.tmp`)).toBe(false);
+  });
 });
 
 describe("parseIndex (issue #4 — read routing map before create)", () => {
@@ -256,6 +288,26 @@ describe("parseIndex (issue #4 — read routing map before create)", () => {
     regenerateIndex(dir, db);
     const parsed = parseIndex(dir).map((t) => t.topicId).sort();
     expect(parsed).toEqual(["a", "b", "c"]);
+  });
+
+  it("tolerates hand-edited formatting (leading/extra spaces around colon)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-parse-tol-"));
+    writeFileSync(
+      join(dir, "INDEX.md"),
+      [
+        "# Memory Index",
+        "",
+        "  - ** cycling ** : User rides a bike.  ",
+        "   - **fitness**  :  Gym routine. ",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const topics = parseIndex(dir);
+    expect(topics).toHaveLength(2);
+    expect(topics[0]).toEqual({ topicId: "cycling", summary: "User rides a bike." });
+    expect(topics[1]).toEqual({ topicId: "fitness", summary: "Gym routine." });
   });
 });
 

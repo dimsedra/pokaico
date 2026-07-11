@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
@@ -11,6 +11,18 @@ vi.mock("../src/memory/summarizer", () => ({
 vi.mock("../src/memory/foundational", () => ({
   refreshFoundational: vi.fn(),
 }));
+
+let throwInObserver = false;
+vi.mock("../src/memory/topics", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/memory/topics")>();
+  return {
+    ...actual,
+    regenerateIndex: (memoryDir: string, db: PokaicoDb) => {
+      if (throwInObserver) throw new Error("observer boom");
+      return actual.regenerateIndex(memoryDir, db);
+    },
+  };
+});
 
 import { processSession } from "../src/memory/pipeline";
 import { summarize } from "../src/memory/summarizer";
@@ -466,5 +478,106 @@ describe("pipeline E2E", () => {
       .prepare("SELECT relationship FROM edges WHERE from_topic = ? AND to_topic = ?")
       .get("big-project", "work-life") as { relationship: string };
     expect(edge.relationship).toBe("related-to");
+  });
+
+  it("observer failure does NOT abort extraction (journal still marked extracted)", async () => {
+    const sessionId = "observer-fail";
+    const startedAt = "2026-07-08T22:30:00+07:00";
+    const path = makeJournal(journalDir, sessionId, startedAt, [
+      { ts: "22:30:00", role: "User", content: "Observer should not break this." },
+      { ts: "22:30:05", role: "Pokai", content: "Right." },
+    ]);
+
+    mockSummarize.mockResolvedValue({
+      summary: "Observer failure test.",
+      keyPoints: ["observer"],
+      topics: [{ title: "observer failure", summary: "Observer failure test.", keyPoints: ["observer"] }],
+    });
+    mockRefresh.mockResolvedValue([]);
+
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexTopic = vi.fn().mockResolvedValue(undefined);
+    const mockLlm = {} as never;
+
+    // Force the mechanical observer (regenerateIndex) to throw. The pipeline
+    // must swallow it and still complete + mark the journal extracted.
+    throwInObserver = true;
+    let result;
+    try {
+      result = await processSession(sessionId, {
+        llm: mockLlm,
+        searchSimilar,
+        indexTopic,
+        db,
+        memoryDir,
+        journalDir,
+      });
+    } finally {
+      throwInObserver = false;
+    }
+
+    expect(result.hasNewMessages).toBe(true);
+    const updated = readFileSync(path, "utf-8");
+    expect(updated).toContain("extracted: true");
+  });
+
+  it("second session about an existing INDEX slug -> update (not create)", async () => {
+    const sessionId = "second-session-regression";
+    const freshDir = mkdtempSync(join(tmpdir(), "pipeline-2nd-"));
+    const freshDb = createDb(join(freshDir, "test.db"));
+    const freshJournal = join(freshDir, "journal");
+    const freshMemory = join(freshDir, "memory");
+    mkdirSync(freshJournal, { recursive: true });
+    mkdirSync(join(freshMemory, "topics"), { recursive: true });
+
+    // Simulate a prior session that created "hiking-hobby" + a fresh INDEX.md.
+    mkdirSync(join(freshMemory, "topics", "hiking-hobby"), { recursive: true });
+    writeFileSync(join(freshMemory, "topics", "hiking-hobby", "CONTEXT.md"), "User loves hiking.", "utf-8");
+    freshDb
+      .prepare(
+        "INSERT OR IGNORE INTO topics(id, path, summary, token_count, updated_at) VALUES (?, ?, '', 0, 0)",
+      )
+      .run("hiking-hobby", "memory/topics/hiking-hobby/CONTEXT.md");
+    writeFileSync(
+      join(freshMemory, "INDEX.md"),
+      "# Memory Index\n\n- **hiking-hobby**: User loves hiking.\n",
+      "utf-8",
+    );
+
+    makeJournal(freshJournal, sessionId, "2026-07-08T23:00:00+07:00", [
+      { ts: "23:00:00", role: "User", content: "I went hiking again this weekend, loved the trail." },
+      { ts: "23:00:05", role: "Pokai", content: "Nice!" },
+    ]);
+
+    mockSummarize.mockResolvedValue({
+      summary: "User went hiking again.",
+      keyPoints: ["User enjoys hiking"],
+      topics: [{ title: "hiking hobby", summary: "User went hiking again.", keyPoints: ["User enjoys hiking"] }],
+    });
+    mockRefresh.mockResolvedValue([]);
+
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexTopic = vi.fn().mockResolvedValue(undefined);
+    const mockLlm = {} as never;
+
+    const result = await processSession(sessionId, {
+      llm: mockLlm,
+      searchSimilar,
+      indexTopic,
+      db: freshDb,
+      memoryDir: freshMemory,
+      journalDir: freshJournal,
+    });
+
+    expect(result.hasNewMessages).toBe(true);
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0].action).toBe("update");
+    expect(result.changes[0].topicId).toBe("hiking-hobby");
+    // No duplicate topic created — only the one directory exists.
+    expect(readdirSync(join(freshMemory, "topics"))).toEqual(["hiking-hobby"]);
+    expect(searchSimilar).not.toHaveBeenCalled();
+
+    closeDb(freshDb);
+    rmSync(freshDir, { recursive: true, force: true });
   });
 });

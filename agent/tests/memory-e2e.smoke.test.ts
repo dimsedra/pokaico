@@ -196,17 +196,16 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     const updates = result.changes.filter((c) => c.action === "update");
     const creates = result.changes.filter((c) => c.action === "create");
 
-    if (updates.length > 0) {
-      console.log("  UPDATE VERIFIED: existing topic correctly updated");
-      const updatedContent = readFileSync(
-        join(memoryDir, "topics", updates[0].topicId, "CONTEXT.md"),
-        "utf-8",
-      );
-      console.log(`  Updated content length: ${updatedContent.length} chars`);
-      expect(updatedContent).toContain("bike");
-    } else {
-      console.log(`  NOTE: no update (${creates.length} creates instead). Similarity threshold may need tuning.`);
-    }
+    // Acceptance (issue #2 Test 3): a follow-up session about an existing
+    // topic must UPDATE it, never create a duplicate.
+    expect(updates.length).toBeGreaterThan(0);
+    expect(creates.length).toBe(0);
+    expect(updates[0].topicId).toBe(existingId);
+    const updatedContent = readFileSync(
+      join(memoryDir, "topics", updates[0].topicId, "CONTEXT.md"),
+      "utf-8",
+    );
+    expect(updatedContent).toContain("bike");
   }, 120_000);
 
   it("Test 4: compaction condenses oversized content within the cap (real Gemini)", async () => {
