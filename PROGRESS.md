@@ -119,34 +119,48 @@ Tracking issues:
 
 ---
 
-## Phase 4: Mastra Agent + Retrieval Tools [ ]
+## Phase 4: Mastra Agent + Retrieval Tools + IPC [ ]
 
-**Scope:** Mastra conversational agent, 6 retrieval tools as Mastra tools.
+**Scope:** Mastra conversational agent, 6 retrieval tools as Mastra tools, system prompt with INDEX-primary routing, native Tauri IPC bridge.
+**Arsitektur komunikasi:** Frontend ↔ Tauri Rust command ↔ stdin/stdout ↔ Node sidecar. Native IPC sejak awal agar tak perlu migrasi di v0.2.
 
-- [ ] Mastra agent: model from models.dev catalog, system prompt from foundational topics
-- [ ] `search_topics`: FTS5 + embedding hybrid search, ranked results
-- [ ] `read_topic`: full CONTEXT.md for a topic slug
-- [ ] `list_topics`: all topics with metadata, filterable by kind
-- [ ] `ingest_resource`: programmatic file copy → Xberg extraction → companion `.md` → graph edge (agent never touches filesystem directly)
-- [ ] `read_resource`: companion `.md` content or original file info
-- [ ] `read_session`: raw journal transcript
-- **Test:** Each tool independently with mock data, agent invokes correct tools, ingest_resource flow (copy + extract + link)
-- **Deliverable:** Working conversational agent with full retrieval toolkit
+**Urutan task (sequential, no backtrack):**
+
+### Group A — Foundation (back end, pure vitest)
+- [ ] **Task 1 — Provider registry** (`agent/src/models/provider.ts`): config provider + API key + model aktif. Default Gemini dari `.env`. Config JSON loader/saver.
+- [ ] **Task 2 — System prompt builder** (`agent/src/mastra/prompt.ts`): `buildPrompt(memoryDir, query?)` → inject INDEX.md + 3 foundational topics + recent journal summary. Output string instruksi agent.
+- [ ] **Task 3 — Agent factory** (`agent/src/mastra/index.ts`): `createAgent({ model, tools, memoryDir })` → return Mastra agent tanpa tools (factory terima tools sbg parameter).
+
+### Group B — Tools (standalone, test masing-masing)
+- [ ] **Task 4 — `read_topic`** (`agent/src/mastra/tools/read-topic.ts`): baca CONTEXT.md dari filesystem
+- [ ] **Task 5 — `list_topics`** (`agent/src/mastra/tools/list-topics.ts`): baca INDEX.md, filter opsional
+- [ ] **Task 6 — `read_session`** (`agent/src/mastra/tools/read-session.ts`): baca journal transcript
+- [ ] **Task 7 — `search_topics`** (`agent/src/mastra/tools/search-topics.ts`): INDEX-primary route → FTS5/vector fallback
+- [ ] **Task 8 — `read_resource`** (`agent/src/mastra/tools/read-resource.ts`): baca resource file dari disk
+- [ ] **Task 9 — `ingest_resource`** (`agent/src/mastra/tools/ingest-resource.ts`): copy file + Xberg extraction + graph edge link
+
+### Group C — Assembly & IPC
+- [ ] **Task 10 — Chat assembly** (modify `agent/src/index.ts`): import agent factory + semua tool → agent beneran. Tambah **stdin/stdout JSON-line listener** (Tauri IPC protocol). HTTP `/health` tetap untuk dev.
+- [ ] **Task 11 — Tauri bridge** (`src-tauri/src/commands.rs` + `tauri.conf.json`): register sidecar di `externalBin`, Rust command `chat(message)` → JSON stdin → baca stdout → balas ke frontend. *(Rust dikerjakan bareng)*
+- [ ] **Task 12 — Frontend wire** (React component): panggil `invoke("chat", {message})`, tampilkan response. Text input + chat bubble minimal.
+
+### Group D — Close out
+- [ ] **Task 13 — Final**: update PROGRESS.md, full offline suite + smoke test (real Gemini)
+
+**Deliverable:** Working conversational agent dengan INDEX-primary routing + 6 retrieval tools + native IPC bridge + frontend chat minimal.
 
 ---
 
-## Phase 5: Frontend (React + Tauri) [ ]
+## Phase 5: Frontend — Chat UI & Settings [ ]
 
-**Scope:** Desktop UI: chat interface, settings, IPC bridge, pixel art aesthetic.
+**Scope:** Desktop UI: chat interface, settings, pixel art aesthetic. IPC bridge sudah selesai di Phase 4 — tinggal UI.
+**Arsitektur komunikasi:** React → `invoke("chat")` (Tauri command, sudah dibangun Phase 4) → stdio → sidecar → balas.
 
-- [ ] Tauri window config (size, title, pixel art icon)
-- [ ] Sidecar lifecycle (start on launch, stop on close)
-- [ ] IPC bridge (React ↔ Node.js sidecar via tauri commands or HTTP)
-- [ ] Chat UI: message list (markdown rendering), input field, file attachment, typing indicator, error display
-- [ ] Settings: data directory (first-launch flow), model selection, view journal, view topics, about
-- [ ] Pixel art styling: cozy palette, pixel fonts, custom decorative elements
-- **Test:** Component rendering, IPC roundtrip, settings persistence, full chat flow (message → agent → response → display)
-- **Deliverable:** Working desktop app with chat UI + settings + agent integration
+- [ ] Chat UI: message list (markdown rendering), text input, file attachment, typing indicator, error display
+- [ ] Settings page: data directory (first-launch flow), model selection (dari provider registry Phase 4), about
+- [ ] Pixel art styling: cozy palette, pixel fonts, custom decorative elements, grid-aligned layout
+- [ ] **Test:** Component rendering, full chat flow (message → agent → response → display), settings persistence
+- **Deliverable:** Working desktop UI with chat + settings + pixel art aesthetic
 
 ---
 
