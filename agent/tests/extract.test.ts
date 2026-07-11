@@ -176,4 +176,39 @@ describe("extractTopics", () => {
     expect(result).toHaveLength(1);
     expect(result[0].action).toBe("create");
   });
+
+  // --- Issue #4: deterministic pre-check against INDEX.md slug set ---
+
+  it("updates existing topic when title slug matches an INDEX topic (skips embedding)", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexSlugs = new Set(["hiking-hobby"]);
+
+    const result = await extractTopics(summary, [], searchSimilar, indexSlugs);
+    expect(result).toHaveLength(1);
+    expect(result[0].action).toBe("update");
+    expect(result[0].topicId).toBe("hiking-hobby");
+    expect(searchSimilar).not.toHaveBeenCalled();
+  });
+
+  it("creates a new topic when title slug is absent from INDEX", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexSlugs = new Set(["other-topic"]);
+
+    const result = await extractTopics(summary, [], searchSimilar, indexSlugs);
+    expect(result[0].action).toBe("create");
+    expect(result[0].topicId).toBe("hiking-hobby");
+  });
+
+  it("falls back to DB slug set when no INDEX slugs provided", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const existingTopics: TopicMeta[] = [
+      { topicId: "hiking-hobby", summary: "", isFoundational: false, updatedAt: 0 },
+    ];
+
+    const result = await extractTopics(summary, existingTopics, searchSimilar);
+    expect(result).toHaveLength(1);
+    expect(result[0].action).toBe("update");
+    expect(result[0].topicId).toBe("hiking-hobby");
+    expect(searchSimilar).not.toHaveBeenCalled();
+  });
 });

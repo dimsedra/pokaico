@@ -12,6 +12,7 @@ import {
   deleteTopic,
   ensureIndex,
   regenerateIndex,
+  parseIndex,
 } from "../src/memory/topics";
 
 let tmpDir: string;
@@ -197,6 +198,36 @@ describe("regenerateIndex (issue #3 — mechanical observer)", () => {
     expect(content).toContain("a");
     expect(content).not.toContain("a → b");
     expect(content).not.toContain("## Edges");
+  });
+});
+
+describe("parseIndex (issue #4 — read routing map before create)", () => {
+  it("parses topic lines and ignores edge/placeholder lines", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-parse-"));
+    writeFileSync(
+      join(dir, "INDEX.md"),
+      [
+        "# Memory Index",
+        "",
+        "- **cycling**: User bikes to work.",
+        "- **fitness**: User's fitness goals.",
+        "",
+        "## Edges",
+        "- cycling → fitness: related-to",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const topics = parseIndex(dir);
+    expect(topics).toHaveLength(2);
+    expect(topics[0]).toEqual({ topicId: "cycling", summary: "User bikes to work." });
+    expect(topics[1]).toEqual({ topicId: "fitness", summary: "User's fitness goals." });
+  });
+
+  it("returns [] when INDEX.md is absent (caller falls back to DB)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pokaico-parse-empty-"));
+    expect(parseIndex(dir)).toEqual([]);
   });
 });
 

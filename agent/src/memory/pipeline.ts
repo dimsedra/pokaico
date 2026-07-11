@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { LanguageModelV1 } from "ai";
 import type { PokaicoDb } from "../db/client";
 import { readSession } from "./journal";
-import { readTopic, updateTopic, regenerateIndex } from "./topics";
+import { readTopic, updateTopic, regenerateIndex, parseIndex } from "./topics";
 import { hasNewMessages, updatePointer } from "./guards";
 import { summarize as defaultSummarize } from "./summarizer";
 import { refreshFoundational as defaultRefresh } from "./foundational";
@@ -230,7 +230,18 @@ export async function processSession(
     updatedAt: r.updated_at,
   }));
 
-  const changes = await extractTopics(summary, existingMeta, searchSimilar);
+  // Audit before create (issue #4): read the canonical routing map so
+  // extraction can deterministically UPDATE an existing slug instead of
+  // duplicating it. Foundational topics are excluded — they are owned by the
+  // refreshFoundational step, not by extraction.
+  const indexTopics = parseIndex(memoryDir);
+  const indexSlugs = new Set(
+    indexTopics
+      .map((t) => t.topicId)
+      .filter((id) => !FOUNDATIONAL_TOPIC_IDS.includes(id)),
+  );
+
+  const changes = await extractTopics(summary, existingMeta, searchSimilar, indexSlugs);
 
   // Compact update-changes before writing: LLM condenses current + new info
   // into the token cap (runs BEFORE acquiring per-topic write locks).

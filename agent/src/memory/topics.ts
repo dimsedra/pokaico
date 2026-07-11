@@ -9,6 +9,8 @@ export type TopicMeta = {
   updatedAt: number;
 };
 
+export type IndexTopic = { topicId: string; summary: string };
+
 function topicDir(memoryDir: string, topicId: string): string {
   return join(memoryDir, "topics", topicId);
 }
@@ -137,4 +139,25 @@ export function regenerateIndex(memoryDir: string, db: PokaicoDb): void {
   const tmpPath = `${indexPath}.tmp`;
   writeFileSync(tmpPath, sections.join("\n"), "utf-8");
   renameSync(tmpPath, indexPath);
+}
+
+/**
+ * Read the canonical routing map (INDEX.md) back into structured form. This is
+ * the deterministic counterpart to `regenerateIndex` — extraction consults it
+ * before creating topics so it can UPDATE an existing slug instead of
+ * duplicating it (issue #4). Returns [] if INDEX.md is absent so callers can
+ * fall back to the DB-backed topic list.
+ */
+export function parseIndex(memoryDir: string): IndexTopic[] {
+  const indexPath = join(memoryDir, "INDEX.md");
+  if (!existsSync(indexPath)) return [];
+
+  const content = readFileSync(indexPath, "utf-8");
+  const topics: IndexTopic[] = [];
+  const re = /^- \*\*(.+?)\*\*:\s*(.*)$/;
+  for (const line of content.split("\n")) {
+    const m = re.exec(line);
+    if (m) topics.push({ topicId: m[1], summary: m[2] });
+  }
+  return topics;
 }
