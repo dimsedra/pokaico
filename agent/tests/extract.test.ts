@@ -333,3 +333,65 @@ describe("extractTopics deterministic guards (issue #4)", () => {
     expect(searchSimilar).toHaveBeenCalled();
   });
 });
+
+describe("extractTopics relatedTo (issue #8 — LLM-judged cross-topic edges)", () => {
+  it("resolves relatedTo segment indices to bidirectional TopicChange.edges with reason", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const summary = {
+      summary: "User cycles and hikes.",
+      keyPoints: ["cycling", "hiking"],
+      topics: [
+        { title: "cycling commute", summary: "Cycling to work.", keyPoints: [], relatedTo: [{ topicIndex: 1, reason: "User often compares trail conditions" }] },
+        { title: "hiking trails", summary: "Hiking on weekends.", keyPoints: [], relatedTo: [{ topicIndex: 0, reason: "User often compares trail conditions" }] },
+      ],
+    };
+
+    const result = await extractTopics(summary, [], searchSimilar);
+
+    expect(result).toHaveLength(2);
+
+    const cycling = result.find((c) => c.topicId.includes("cycl"))!;
+    const hiking = result.find((c) => c.topicId.includes("hik"))!;
+
+    expect(cycling).toBeDefined();
+    expect(hiking).toBeDefined();
+
+    expect(cycling.edges).toBeDefined();
+    expect(cycling.edges!.some((e) => e.toTopic === hiking.topicId && e.reason === "User often compares trail conditions")).toBe(true);
+
+    expect(hiking.edges).toBeDefined();
+    expect(hiking.edges!.some((e) => e.toTopic === cycling.topicId && e.reason === "User often compares trail conditions")).toBe(true);
+  });
+
+  it("skips out-of-range topicIndex gracefully", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const summary = {
+      summary: "Single topic.",
+      keyPoints: ["work"],
+      topics: [
+        { title: "work stress", summary: "Stressful week.", keyPoints: [], relatedTo: [{ topicIndex: 5, reason: "nonexistent" }] },
+      ],
+    };
+
+    const result = await extractTopics(summary, [], searchSimilar);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].edges).toBeUndefined();
+  });
+
+  it("skips self-referencing topicIndex", async () => {
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const summary = {
+      summary: "One topic.",
+      keyPoints: ["alone"],
+      topics: [
+        { title: "solo topic", summary: "Just me.", keyPoints: [], relatedTo: [{ topicIndex: 0, reason: "self" }] },
+      ],
+    };
+
+    const result = await extractTopics(summary, [], searchSimilar);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].edges).toBeUndefined();
+  });
+});

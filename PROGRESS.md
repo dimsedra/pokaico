@@ -131,9 +131,9 @@ Tracking issues:
 
 **Reason:** Foundational topics perlu definisi di prompt (biar LLM tau persis isi tiap topik). `user-patterns` juga perlu session tags `[session:id]` untuk melacak bukti lintas session sebagai bobot pola.
 
-- [ ] `foundational.ts` — prompt definitions + `sessionId` param + session tag instructions
-- [ ] `pipeline.ts` — pass `sessionId` ke `refreshFoundational`
-- [ ] Tests — update foundational.test.ts, pipeline.test.ts
+- [x] `foundational.ts` — prompt definitions + `sessionId` param + session tag instructions
+- [x] `pipeline.ts` — pass `sessionId` ke `refreshFoundational`
+- [x] Tests — update foundational.test.ts, pipeline.test.ts
 
 **Tidak berubah:** `user-profile` dan `user-background` tanpa session tags (fakta stabil, tidak butuh bobot)
 

@@ -51,7 +51,7 @@ function mergeExisting(existing: string, newEntry: string): string {
 }
 
 function buildRelatedSection(change: TopicChange): string | null {
-  const related = change.edges?.filter((e) => e.reason && e.relationship === "related-to" || e.reason);
+  const related = change.edges?.filter((e) => e.relationship === "related-to" && e.reason);
   if (!related || related.length === 0) return null;
   const lines = related.map((e) => `- [${e.toTopic}](CONTEXT.md) — ${e.reason}`);
   return `\n\n## Related\n${lines.join("\n")}`;

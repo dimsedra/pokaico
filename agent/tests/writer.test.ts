@@ -153,4 +153,21 @@ describe("writer", () => {
     const rd = join(memoryDir(), "topics", "growing", "resources");
     expect(existsSync(rd)).toBe(false);
   });
+
+  it("writes ## Related section when change has edges with reason", async () => {
+    const rDir = mkdtempSync(join(tmpdir(), "writer-related-"));
+    const rMem = join(rDir, "memory");
+    mkdirSync(join(rMem, "topics"), { recursive: true });
+
+    await applyChanges(
+      [{ topicId: "a", action: "create", content: "Topic A.", edges: [{ toTopic: "b", relationship: "related-to", reason: "They co-occur" }] }],
+      rMem, "s1", 1,
+    );
+
+    const content = readFileSync(join(rMem, "topics", "a", "CONTEXT.md"), "utf-8");
+    expect(content).toContain("## Related");
+    expect(content).toContain("- [b](CONTEXT.md) — They co-occur");
+
+    rmSync(rDir, { recursive: true, force: true });
+  });
 });

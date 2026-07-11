@@ -90,4 +90,48 @@ describe("refreshFoundational", () => {
     expect(result).toHaveLength(3);
     expect(result.filter((u) => u.hasNewInfo)).toHaveLength(1);
   });
+
+  it("includes TOPIC_DEFINITIONS in the LLM prompt", async () => {
+    mockGenerateText.mockResolvedValue({
+      output: { updates: [{ topicId: "user-profile", newContent: null, hasNewInfo: false }] },
+    });
+
+    await refreshFoundational(summary, [
+      { topicId: "user-profile", currentContent: "" },
+      { topicId: "user-background", currentContent: "" },
+    ], mockModel);
+
+    const prompt = mockGenerateText.mock.calls[0][0].prompt;
+    expect(prompt).toContain("Definition: Personality traits, thinking patterns, values");
+    expect(prompt).toContain("Definition: Name, location, timezone, occupation");
+    // user-patterns not included here — only topics passed to the function appear
+  });
+
+  it("injects session tag instructions for user-patterns when sessionId is given", async () => {
+    mockGenerateText.mockResolvedValue({
+      output: { updates: [{ topicId: "user-patterns", newContent: "Pattern detected [session:test-session].", hasNewInfo: true }] },
+    });
+
+    await refreshFoundational(summary, [
+      { topicId: "user-patterns", currentContent: "" },
+    ], mockModel, "test-session");
+
+    const prompt = mockGenerateText.mock.calls[0][0].prompt;
+    expect(prompt).toContain("[session:test-session]");
+    expect(prompt).toContain("NEVER remove existing session markers");
+  });
+
+  it("does NOT inject session tag instructions for user-profile even with sessionId", async () => {
+    mockGenerateText.mockResolvedValue({
+      output: { updates: [{ topicId: "user-profile", newContent: null, hasNewInfo: false }] },
+    });
+
+    await refreshFoundational(summary, [
+      { topicId: "user-profile", currentContent: "" },
+    ], mockModel, "test-session");
+
+    const prompt = mockGenerateText.mock.calls[0][0].prompt;
+    expect(prompt).not.toContain("[session:test-session]");
+    expect(prompt).not.toContain("session tag instructions");
+  });
 });
