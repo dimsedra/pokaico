@@ -84,6 +84,22 @@ Menggantikan backlog "Topic re-consolidation" (append-only + provenance markers)
 - [x] Slice 6 — E2E smoke (Gemini asli): `compact()` mengecilkan konten oversized ke dalam cap
 - **Test:** 201 passed, 4 skipped (dijalankan dari `agent/`). Known-limitation tetap: kalibrasi `SIMILARITY_THRESHOLD` (E2E Test 3 update path) & sanitasi karakter khusus FTS5 (E2E Test 2 retrieval)
 
+### Phase 3b: INDEX-primary routing + mechanical observer [OPEN — diissue #2/#3/#4]
+
+Keputusan arsitektur (dikunci sesi ini): routing retrieval **tidak** lagi bergantung skor similarity `combinedScore` (`SIMILARITY_THRESHOLD=0.35`, `extract.ts:4` — rapuh, sering meleset → duplikat topik). Sebaliknya:
+
+- **`INDEX.md` = router utama (INDEX-primary).** Peta topik (`memory/INDEX.md`, ringkas 1 baris/topik + label edge) disuntikkan ke konteks agent saat session start (paralel foundational, SPEC §7). LLM merute via peta; `search_topics` (SQLite vec0+FTS5) **turun jadi fallback** untuk query tak-terduga.
+- **Cek deterministik sebelum `create`.** `extract_topics` membaca `INDEX.md`/daftar topik yg sudah ada **sebelum** `slugify`+`create`; jika slug/entri serupa ada → `update`, bukan `create` baru. Ini menuntaskan akar duplikat (bukan sekadar nambal threshold).
+- **Observer MEKANIS regenerate `INDEX.md`** pasca-ekstraksi (setelah `applyChanges`/`reindexTopics`). `regenerateIndex(memoryDir)` membangun ulang dari tabel `topics`+`edges` **tanpa LLM** (deterministik, biaya nol) — menggantikan `ensureIndex` yg lazy/stale (`topics.ts:76-84`).
+- **Sanitasi + OR-semantics FTS5** (issue #1 poin 2) tetap relevan sbg **fallback hardening**, bukan penentu utama.
+- **Gardening (LLM merge/split, event-driven background job) DITUNDA** v0.2+ — tapi duplikat dihalang di sumber lewat cek `INDEX.md` di atas.
+
+Tracking issues:
+- [#2](https://github.com/dimsedra/pokaico/issues/2) — INDEX.md sbg router utama + cek deterministik sebelum create
+- [#3](https://github.com/dimsedra/pokaico/issues/3) — Observer mekanis regenerate INDEX.md pasca-ekstraksi
+- [#4](https://github.com/dimsedra/pokaico/issues/4) — Audit background ekstraksi jurnal: baca INDEX.md sebelum create (pintu masuk #2/#1)
+- (Latar: [#1](https://github.com/dimsedra/pokaico/issues/1) poin 2/3/4 — risiko korektnes awal; poin 1=stale chunk SUDAH selesai di Slice 4)
+
 ---
 
 ## Phase 4: Mastra Agent + Retrieval Tools [ ]
@@ -134,6 +150,10 @@ Menggantikan backlog "Topic re-consolidation" (append-only + provenance markers)
 ## Backlog
 
 Ideas, features, and improvements scoped but not yet scheduled into a phase.
+
+### INDEX.md sebagai router utama (INDEX-primary) [OPEN — lihat Phase 3b, issue #2/#3/#4]
+
+`INDEX.md` dimaksud SPEC sbg peta topik utama (routing + konteks ringkas), tapi `ensureIndex` (`topics.ts:76-84`) cuma bikin sekali & stale. Kini dikunci jadi **router utama**: disuntik ke konteks agent, LLM rute via peta, SQLite `search_topics` turun jadi fallback; observer mekanis regenerate pasca-ekstraksi. Lihat Phase 3b.
 
 ### Cross-link edges [✅ DONE — lihat Phase 3 "CONTEXT.md compaction + cross-link edges"]
 
