@@ -9,9 +9,9 @@
 ╚════════════════════════════════════════╝
 ```
 
-There are so many cool ways to work with AI right now. Companions, workspaces, agents that build things for you. We genuinely love watching this space grow.
+There are so many cool ways to work with AI right now. Companions, workspaces, agents that build things for you. I genuinely love watching this space grow.
 
-Pokaico is our little corner in that world. Not better — just different. Built around a quiet idea.
+Pokaico is my little corner in that world. Not better — just different. Built around a quiet idea.
 
 *Most AI tools remember your last conversation. Some remember a few. What if your companion truly knew you?*
 
@@ -92,7 +92,7 @@ Built with care, for people who want their AI to feel like home.
 
 ## come say hi
 
-Pokaico isn't quite ready yet. We're building it slowly — a lot of thought, a fair amount of pixel art, and way too many tests for a v0.1.
+Pokaico isn't quite ready yet. I'm building it slowly — a lot of thought, a fair amount of pixel art, and way too many tests for a v0.1.
 
 Star the repo if you'd like to follow along. Pull requests and ideas are welcome, but so is just saying hello.
 
