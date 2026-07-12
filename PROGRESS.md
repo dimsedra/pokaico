@@ -172,7 +172,7 @@ Tracking issues:
 - [x] **Task 3 — Agent factory** (`agent/src/mastra/index.ts`): `createAgent({ model, tools, memoryDir })` → return Mastra agent. Factory terima tools sbg parameter, fallback ke static prompt jika fail. (commit + test)
 
 ### Group B — Tools (standalone, test masing-masing)
-- [ ] **Task 4 — `read_topic`** ([#15](https://github.com/dimsedra/pokaico/issues/15)) (`agent/src/mastra/tools/read-topic.ts`): baca CONTEXT.md dari filesystem
+- [x] **Task 4 — `read_topic`** ([#15](https://github.com/dimsedra/pokaico/issues/15)) (`agent/src/mastra/tools/read-topic.ts`): baca CONTEXT.md dari filesystem
 - [ ] **Task 5 — `list_topics`** ([#16](https://github.com/dimsedra/pokaico/issues/16)) (`agent/src/mastra/tools/list-topics.ts`): baca INDEX.md, filter opsional
 - [ ] **Task 6 — `read_session`** ([#17](https://github.com/dimsedra/pokaico/issues/17)) (`agent/src/mastra/tools/read-session.ts`): baca journal transcript
 - [ ] **Task 7 — `search_topics`** ([#18](https://github.com/dimsedra/pokaico/issues/18)) (`agent/src/mastra/tools/search-topics.ts`): INDEX-primary route → FTS5/vector fallback
