@@ -1,6 +1,6 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import { readSessionAsync, type JournalTurn } from "../memory/journal";
+import { readSessionAsync, type JournalTurn, type JournalSession } from "../memory/journal";
 
 // Static Pokai system instructions (<500 tokens)
 export const STATIC_SYSTEM_PROMPT = `You are Pokai, a helpful, friendly, and highly capable agentic assistant.
@@ -15,7 +15,7 @@ Guidelines:
 
 export async function buildPrompt(
   memoryDir: string,
-  query?: string,
+  _query?: string,
   journalDir?: string
 ): Promise<string> {
   const indexMdPath = join(memoryDir, "INDEX.md");
@@ -66,49 +66,53 @@ async function readRecentHistory(journalDir: string): Promise<string> {
     return "";
   }
 
-  const filesWithTime = [];
-  for (const file of files) {
-    if (file.endsWith(".md")) {
-      const filePath = join(journalDir, file);
-      try {
-        const stats = await stat(filePath);
-        filesWithTime.push({
-          filename: file,
-          filePath,
-          mtimeMs: stats.mtimeMs,
-        });
-      } catch {
-        // Skip files that cannot be accessed
-      }
-    }
-  }
+  // Filter markdown files
+  const mdFiles = files.filter((f) => f.endsWith(".md"));
+  if (mdFiles.length === 0) return "";
 
-  // Sort descending by mtimeMs with filename tie-breaker
-  filesWithTime.sort((a, b) => {
-    if (b.mtimeMs !== a.mtimeMs) {
-      return b.mtimeMs - a.mtimeMs;
+  // O(1) Optimization: Sort alphabetically descending and slice top-10 latest filenames
+  mdFiles.sort((a, b) => b.localeCompare(a));
+  const topFiles = mdFiles.slice(0, 10);
+
+  // Parallel asynchronous read/parse
+  const sessionPromises = topFiles.map(async (file) => {
+    try {
+      return await readSessionAsync(join(journalDir, file));
+    } catch (err) {
+      console.warn(`[pokaico] Failed to parse journal file ${file}:`, err);
+      return null;
     }
-    return b.filename.localeCompare(a.filename);
+  });
+
+  const sessions = (await Promise.all(sessionPromises)).filter(
+    (s): s is JournalSession => s !== null
+  );
+
+  if (sessions.length === 0) return "";
+
+  // Sort sessions chronologically by startedAt frontmatter descending (tie-breaker: sessionId)
+  sessions.sort((a, b) => {
+    const timeA = new Date(a.startedAt).getTime() || 0;
+    const timeB = new Date(b.startedAt).getTime() || 0;
+    if (timeB !== timeA) {
+      return timeB - timeA;
+    }
+    return b.sessionId.localeCompare(a.sessionId);
   });
 
   const chunks: JournalTurn[][] = [];
   let accumulatedCount = 0;
 
-  for (const fileInfo of filesWithTime) {
-    try {
-      const session = await readSessionAsync(fileInfo.filePath);
-      if (session.turns && session.turns.length > 0) {
-        const needed = 10 - accumulatedCount;
-        if (needed <= 0) break;
+  for (const session of sessions) {
+    if (session.turns && session.turns.length > 0) {
+      const needed = 10 - accumulatedCount;
+      if (needed <= 0) break;
 
-        const chunk = session.turns.slice(-needed);
-        chunks.push(chunk);
-        accumulatedCount += chunk.length;
+      const chunk = session.turns.slice(-needed);
+      chunks.push(chunk);
+      accumulatedCount += chunk.length;
 
-        if (accumulatedCount >= 10) break;
-      }
-    } catch (err) {
-      console.warn(`[pokaico] Failed to parse journal file ${fileInfo.filename}:`, err);
+      if (accumulatedCount >= 10) break;
     }
   }
 
@@ -118,8 +122,9 @@ async function readRecentHistory(journalDir: string): Promise<string> {
 
   return finalTurns
     .map((turn) => {
-      const label = turn.role === "user" ? "User" : turn.role === "pokai" ? "Pokai" : "Tool";
-      return `- [${turn.timestamp}] ${label}: ${turn.content.trim()}`;
+      const label = turn.role === "user" ? "User" : turn.role === "pokai" ? "Pokai" : turn.toolName ? `Tool (${turn.toolName.trim()})` : "Tool";
+      const formattedContent = turn.content.trim().replace(/\n/g, "\n  ");
+      return `- [${turn.timestamp}] ${label}: ${formattedContent}`;
     })
     .join("\n");
 }

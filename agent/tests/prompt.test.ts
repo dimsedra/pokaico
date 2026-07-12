@@ -247,4 +247,111 @@ describe("buildPrompt - error shielding", () => {
   });
 });
 
+describe("buildPrompt - code review fixes", () => {
+  it("should sort sessions chronologically by started_at frontmatter even if mtimeMs is out of order", async () => {
+    const sortJournalDir = join(tmpDir, "sort-journal");
+    mkdirSync(sortJournalDir, { recursive: true });
+
+    const path1 = join(sortJournalDir, "2026-07-08-session1.md");
+    const path2 = join(sortJournalDir, "2026-07-08-session2.md");
+
+    // session1 has started_at = 10:00:00 (older), but we will set its mtime to be newer
+    writeFileSync(
+      path1,
+      [
+        "---",
+        "session_id: sess1",
+        "started_at: 2026-07-08T10:00:00+07:00",
+        "model: test",
+        "extracted: false",
+        "---",
+        "",
+        "## [10:00:00] User",
+        "Message Older",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    // session2 has started_at = 11:00:00 (newer), but we will set its mtime to be older
+    writeFileSync(
+      path2,
+      [
+        "---",
+        "session_id: sess2",
+        "started_at: 2026-07-08T11:00:00+07:00",
+        "model: test",
+        "extracted: false",
+        "---",
+        "",
+        "## [11:00:00] User",
+        "Message Newer",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    // Set mtime of path1 (older session) to be newer in filesystem than path2 (newer session)
+    const now = Date.now();
+    utimesSync(path1, new Date(now), new Date(now));
+    utimesSync(path2, new Date(now - 10000), new Date(now - 10000));
+
+    const prompt = await buildPrompt(memoryDir, undefined, sortJournalDir);
+
+    // If it sorts by started_at frontmatter, "Message Older" must appear BEFORE "Message Newer"
+    const idxOlder = prompt.indexOf("Message Older");
+    const idxNewer = prompt.indexOf("Message Newer");
+    expect(idxOlder).toBeLessThan(idxNewer);
+  });
+
+  it("should indent multi-line turns correctly so they don't break markdown list bullet formatting", async () => {
+    const multilineJournalDir = join(tmpDir, "ml-journal");
+    mkdirSync(multilineJournalDir, { recursive: true });
+
+    const path = join(multilineJournalDir, "2026-07-08-ml.md");
+    writeFileSync(
+      path,
+      [
+        "---",
+        "session_id: sessML",
+        "started_at: 2026-07-08T10:00:00+07:00",
+        "model: test",
+        "extracted: false",
+        "---",
+        "",
+        "## [10:00:00] User",
+        "Line one",
+        "Line two",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    const prompt = await buildPrompt(memoryDir, undefined, multilineJournalDir);
+    expect(prompt).toContain("User: Line one\n  Line two");
+  });
+
+  it("should format tool turns including the toolName suffix", async () => {
+    const toolNameJournalDir = join(tmpDir, "toolname-journal");
+    mkdirSync(toolNameJournalDir, { recursive: true });
+
+    const path = join(toolNameJournalDir, "2026-07-08-tn.md");
+    writeFileSync(
+      path,
+      [
+        "---",
+        "session_id: sessTN",
+        "started_at: 2026-07-08T10:00:00+07:00",
+        "model: test",
+        "extracted: false",
+        "---",
+        "",
+        "## [10:00:00] Tool: search_topics",
+        "Search result here",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    const prompt = await buildPrompt(memoryDir, undefined, toolNameJournalDir);
+    expect(prompt).toContain("Tool (search_topics): Search result here");
+  });
+});
+
 
