@@ -27,6 +27,12 @@ describe("createAgent", () => {
 
   it("falls back to static prompt when buildPrompt fails (missing directory)", () => {
     const dir = mkdtempSync(join(tmpdir(), "mastra-test-fallback-"));
+    // No INDEX.md or topics directory exists — buildPrompt reads start failing
+    // and the .catch() supplies STATIC_SYSTEM_PROMPT.
+    // If the fallback were missing, the function passed to Agent constructor
+    // would return a rejected promise (unhandled) — but with .catch() the
+    // promise resolves, so the agent is created without error.
+    expect(() => createAgent({ model: mockModel, memoryDir: dir })).not.toThrow();
     const agent = createAgent({ model: mockModel, memoryDir: dir });
     expect(agent).toBeDefined();
     expect(agent.id).toBe("pokai");

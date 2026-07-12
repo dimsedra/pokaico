@@ -15,7 +15,7 @@ export function createAgent(config: CreateAgentConfig) {
   const { model, memoryDir, tools } = config;
 
   // Build the dynamic system prompt; fall back to static prompt on any failure.
-  const instructions = buildPrompt(memoryDir).catch(() => STATIC_SYSTEM_PROMPT);
+  const instructions = () => buildPrompt(memoryDir).catch(() => STATIC_SYSTEM_PROMPT);
 
   return new Agent({
     id: "pokai",
