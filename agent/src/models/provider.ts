@@ -1,15 +1,21 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { settingsFilePath } from "../config";
 import { providers as snapshotProviders } from "@opencode-ai/models/snapshot";
 import { ModelRouterLanguageModel } from "@mastra/core/llm";
 import { Models, type ProviderMap } from "@opencode-ai/models";
+import { z } from "zod";
 
-export interface ProviderConfig {
-  activeProvider?: string;
-  activeModel?: string;
-  apiKeys?: Record<string, string>;
-}
+/**
+ * Schema for verifying provider configuration file structure at runtime.
+ */
+export const providerConfigSchema = z.object({
+  activeProvider: z.string().optional(),
+  activeModel: z.string().optional(),
+  apiKeys: z.record(z.string()).optional(),
+});
+
+export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 
 export interface UIModel {
   providerId: string;
@@ -21,6 +27,8 @@ export interface UIModel {
   inputCost: number;
   outputCost: number;
 }
+
+const CATALOG_FETCH_TIMEOUT_MS = 2000;
 
 export class ProviderRegistry {
   private configPath: string;
@@ -48,6 +56,12 @@ export class ProviderRegistry {
     return [`${providerId.toUpperCase()}_API_KEY`];
   }
 
+  /**
+   * Synchronizes API keys to global process.env.
+   * 
+   * WARNING: Modifies global process.env state. This side effect is required 
+   * because Mastra and the Vercel AI SDK resolve provider keys from process.env internally.
+   */
   private syncEnvVariables(): void {
     if (!this.config.apiKeys) return;
     for (const [providerId, key] of Object.entries(this.config.apiKeys)) {
@@ -77,33 +91,51 @@ export class ProviderRegistry {
     return undefined;
   }
 
+  /**
+   * Loads the configuration from disk asynchronously.
+   * Resolves to default empty state if the file does not exist (ENOENT).
+   * Throws an error if the file exists but fails to read, parse, or validate against Zod schema.
+   */
   async load(): Promise<ProviderConfig> {
-    if (!existsSync(this.configPath)) {
-      this.config = { apiKeys: {} };
-      return this.config;
+    let raw: string;
+    try {
+      raw = await readFile(this.configPath, "utf-8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        this.config = { apiKeys: {} };
+        return this.config;
+      }
+      throw new Error(`Failed to load provider configuration: ${(err as Error).message}`);
     }
 
     try {
-      const raw = readFileSync(this.configPath, "utf-8");
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        this.config = {
-          activeProvider: parsed.activeProvider,
-          activeModel: parsed.activeModel,
-          apiKeys: parsed.apiKeys && typeof parsed.apiKeys === "object" ? parsed.apiKeys : {},
-        };
-      } else {
-        this.config = { apiKeys: {} };
-      }
-    } catch {
-      this.config = { apiKeys: {} };
+      const validated = providerConfigSchema.parse(parsed);
+      this.config = {
+        activeProvider: validated.activeProvider,
+        activeModel: validated.activeModel,
+        apiKeys: validated.apiKeys || {},
+      };
+    } catch (err) {
+      throw new Error(`Failed to load provider configuration: ${(err as Error).message}`);
     }
 
     this.syncEnvVariables();
     return this.config;
   }
 
+  /**
+   * Saves the configuration to disk asynchronously.
+   * Ensures parent directory exists asynchronously.
+   * Throws an error on Zod validation failure or filesystem write errors.
+   */
   async save(newConfig: Partial<ProviderConfig>): Promise<ProviderConfig> {
+    try {
+      providerConfigSchema.parse(newConfig);
+    } catch (err) {
+      throw new Error(`Failed to save provider configuration: Invalid data format - ${(err as Error).message}`);
+    }
+
     const mergedApiKeys = {
       ...(this.config.apiKeys || {}),
       ...(newConfig.apiKeys || {}),
@@ -116,11 +148,12 @@ export class ProviderRegistry {
     };
 
     const dir = dirname(this.configPath);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(this.configPath, JSON.stringify(this.config, null, 2), "utf-8");
+    } catch (err) {
+      throw new Error(`Failed to save provider configuration: ${(err as Error).message}`);
     }
-
-    writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), "utf-8");
     
     this.syncEnvVariables();
     return this.config;
@@ -130,12 +163,16 @@ export class ProviderRegistry {
     return this.config;
   }
 
+  /**
+   * Validates and returns the active model format string "provider/model".
+   * 
+   * WARNING: Modifies global process.env state to synchronize active provider key.
+   */
   resolveActiveModel(): string {
     if (!this.config.activeProvider || !this.config.activeModel) {
       throw new Error("No model configured");
     }
 
-    // Dynamic key sync on resolution
     const key = this.getApiKey(this.config.activeProvider);
     if (key) {
       const envVars = this.getEnvVarNamesForProvider(this.config.activeProvider);
@@ -147,6 +184,11 @@ export class ProviderRegistry {
     return `${this.config.activeProvider}/${this.config.activeModel}`;
   }
 
+  /**
+   * Resolves and returns a dynamic Mastra ModelRouterLanguageModel instance.
+   * 
+   * WARNING: Modifies global process.env state to synchronize active provider key.
+   */
   resolveActiveModelInstance(): ModelRouterLanguageModel {
     const modelStr = this.resolveActiveModel();
     return new ModelRouterLanguageModel(modelStr);
@@ -180,15 +222,17 @@ export class ProviderRegistry {
     return result;
   }
 
+  /**
+   * Fetches the available models catalog asynchronously from models.dev.
+   * Falls back statically to local snapshot if the request takes longer than 2 seconds or fails.
+   */
   async getAvailableModels(): Promise<UIModel[]> {
     try {
       const client = Models.make();
-      const catalog = await client.catalog({ signal: AbortSignal.timeout(2000) });
+      const catalog = await client.catalog({ signal: AbortSignal.timeout(CATALOG_FETCH_TIMEOUT_MS) });
       return this.formatCatalog(catalog.providers);
     } catch {
-      // Fallback to local snapshot
-      const { providers: snapProviders } = await import("@opencode-ai/models/snapshot");
-      return this.formatCatalog(snapProviders);
+      return this.formatCatalog(snapshotProviders);
     }
   }
 }

@@ -5,14 +5,21 @@ import { join, dirname } from "node:path";
 import { writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-let originalEnv: NodeJS.ProcessEnv;
+let originalEnv: Record<string, string | undefined>;
 
 beforeEach(() => {
   originalEnv = { ...process.env };
 });
 
 afterEach(() => {
-  process.env = originalEnv;
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) {
+      delete process.env[key];
+    }
+  }
+  for (const [key, val] of Object.entries(originalEnv)) {
+    process.env[key] = val;
+  }
 });
 
 
@@ -52,12 +59,10 @@ describe("ProviderRegistry - Slice 2 (Config Loader & Saver)", () => {
     expect(registry.getConfig()).toEqual({ apiKeys: {} });
   });
 
-  it("should load empty config and not crash if file is corrupted JSON", async () => {
+  it("should throw an error if the config file is corrupted JSON", async () => {
     writeFileSync(tempConfigPath, "{ invalid json }", "utf-8");
     const registry = new ProviderRegistry(tempConfigPath);
-    const config = await registry.load();
-    expect(config).toEqual({ apiKeys: {} });
-    expect(registry.getConfig()).toEqual({ apiKeys: {} });
+    await expect(() => registry.load()).rejects.toThrow("Failed to load provider configuration");
   });
 
   it("should save and load valid config", async () => {
