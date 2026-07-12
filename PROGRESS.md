@@ -163,7 +163,7 @@ Tracking issues:
 **Urutan task (sequential, no backtrack):**
 
 ### Group A — Foundation (back end, pure vitest)
-- [ ] **Task 1 — Provider registry** ([#6](https://github.com/dimsedra/pokaico/issues/6)) (`agent/src/models/provider.ts`): config provider + API key + model aktif. Default Gemini dari `.env`. Config JSON loader/saver.
+- [x] **Task 1 — Provider registry** ([#6](https://github.com/dimsedra/pokaico/issues/6)) (`agent/src/models/provider.ts`): config provider + API key + model aktif. Default Gemini dari `.env`. Config JSON loader/saver.
   - **models.dev** (`@opencode-ai/models`) → untuk UI model selector (filter LLM via `modalities.output.includes("text")`)
   - **Mastra model router** → agent runtime pakai format `"provider/model"` (Mastra resolve ke AI SDK)
   - Keduanya dipakai, peran berbeda: models.dev buat katalog/pricing, Mastra buat jalanin model
