@@ -160,4 +160,56 @@ describe("ProviderRegistry - Slice 3 (Dynamic Env Mapping)", () => {
   });
 });
 
+describe("ProviderRegistry - Slice 4 (Active Model Validation & Resolution)", () => {
+  let tempConfigPath: string;
+
+  beforeEach(() => {
+    tempConfigPath = join(tmpdir(), `pokaico-test-provider-model-${Date.now()}-${Math.random().toString(36).substring(2)}.json`);
+  });
+
+  afterEach(() => {
+    if (existsSync(tempConfigPath)) {
+      try {
+        unlinkSync(tempConfigPath);
+      } catch {}
+    }
+  });
+
+  it("should throw error if activeModel or activeProvider is not configured", async () => {
+    const registry = new ProviderRegistry(tempConfigPath);
+    await registry.load(); // empty config
+
+    expect(() => registry.resolveActiveModel()).toThrow("No model configured");
+    expect(() => registry.resolveActiveModelInstance()).toThrow("No model configured");
+  });
+
+  it("should return provider/model string if active model is configured", async () => {
+    const registry = new ProviderRegistry(tempConfigPath);
+    await registry.save({
+      activeProvider: "google",
+      activeModel: "gemini-1.5-flash",
+      apiKeys: { google: "key-123" }
+    });
+
+    const activeModelStr = registry.resolveActiveModel();
+    expect(activeModelStr).toBe("google/gemini-1.5-flash");
+  });
+
+  it("should resolve active model to ModelRouterLanguageModel instance", async () => {
+    const registry = new ProviderRegistry(tempConfigPath);
+    await registry.save({
+      activeProvider: "google",
+      activeModel: "gemini-1.5-flash",
+      apiKeys: { google: "key-123" }
+    });
+
+    const instance = registry.resolveActiveModelInstance();
+    expect(instance).toBeDefined();
+    // ModelRouterLanguageModel has modelId, provider, and gatewayId
+    expect(instance.modelId).toBe("gemini-1.5-flash");
+    expect(instance.provider).toBe("google");
+  });
+});
+
+
 

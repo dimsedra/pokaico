@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { settingsFilePath } from "../config";
 import { providers } from "@opencode-ai/models/snapshot";
+import { ModelRouterLanguageModel } from "@mastra/core/llm";
 
 export interface ProviderConfig {
   activeProvider?: string;
@@ -115,5 +116,27 @@ export class ProviderRegistry {
 
   getConfig(): ProviderConfig {
     return this.config;
+  }
+
+  resolveActiveModel(): string {
+    if (!this.config.activeProvider || !this.config.activeModel) {
+      throw new Error("No model configured");
+    }
+
+    // Dynamic key sync on resolution
+    const key = this.getApiKey(this.config.activeProvider);
+    if (key) {
+      const envVars = this.getEnvVarNamesForProvider(this.config.activeProvider);
+      for (const envVar of envVars) {
+        process.env[envVar] = key;
+      }
+    }
+
+    return `${this.config.activeProvider}/${this.config.activeModel}`;
+  }
+
+  resolveActiveModelInstance(): ModelRouterLanguageModel {
+    const modelStr = this.resolveActiveModel();
+    return new ModelRouterLanguageModel(modelStr);
   }
 }
