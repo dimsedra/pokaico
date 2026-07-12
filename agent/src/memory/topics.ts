@@ -26,7 +26,7 @@ function contextPath(memoryDir: string, topicId: string): string {
   return join(topicDir(memoryDir, topicId), "CONTEXT.md");
 }
 
-function resourcesDir(memoryDir: string, topicId: string): string {
+export function resourcesDir(memoryDir: string, topicId: string): string {
   return join(topicDir(memoryDir, topicId), "resources");
 }
 
