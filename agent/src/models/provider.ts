@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { settingsFilePath } from "../config";
+import { providers } from "@opencode-ai/models/snapshot";
 
 export interface ProviderConfig {
   activeProvider?: string;
@@ -26,6 +27,43 @@ export class ProviderRegistry {
     return this.configPath;
   }
 
+  private getEnvVarNamesForProvider(providerId: string): string[] {
+    const known = providers[providerId];
+    if (known && Array.isArray(known.env)) {
+      return known.env;
+    }
+    return [`${providerId.toUpperCase()}_API_KEY`];
+  }
+
+  private syncEnvVariables(): void {
+    if (!this.config.apiKeys) return;
+    for (const [providerId, key] of Object.entries(this.config.apiKeys)) {
+      if (key) {
+        const envVars = this.getEnvVarNamesForProvider(providerId);
+        for (const envVar of envVars) {
+          process.env[envVar] = key;
+        }
+      }
+    }
+  }
+
+  getApiKey(providerId: string): string | undefined {
+    const configuredKey = this.config.apiKeys?.[providerId];
+    if (configuredKey) {
+      return configuredKey;
+    }
+
+    // Fallback to process.env
+    const envVars = this.getEnvVarNamesForProvider(providerId);
+    for (const envVar of envVars) {
+      if (process.env[envVar]) {
+        return process.env[envVar];
+      }
+    }
+
+    return undefined;
+  }
+
   async load(): Promise<ProviderConfig> {
     if (!existsSync(this.configPath)) {
       this.config = { apiKeys: {} };
@@ -48,11 +86,11 @@ export class ProviderRegistry {
       this.config = { apiKeys: {} };
     }
 
+    this.syncEnvVariables();
     return this.config;
   }
 
   async save(newConfig: Partial<ProviderConfig>): Promise<ProviderConfig> {
-    // Merge properties
     const mergedApiKeys = {
       ...(this.config.apiKeys || {}),
       ...(newConfig.apiKeys || {}),
@@ -64,15 +102,14 @@ export class ProviderRegistry {
       apiKeys: mergedApiKeys,
     };
 
-    // Ensure parent directory exists
     const dir = dirname(this.configPath);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
 
-    // Write to disk
     writeFileSync(this.configPath, JSON.stringify(this.config, null, 2), "utf-8");
-
+    
+    this.syncEnvVariables();
     return this.config;
   }
 

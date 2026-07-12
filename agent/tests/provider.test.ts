@@ -5,6 +5,17 @@ import { join, dirname } from "node:path";
 import { writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 
+let originalEnv: NodeJS.ProcessEnv;
+
+beforeEach(() => {
+  originalEnv = { ...process.env };
+});
+
+afterEach(() => {
+  process.env = originalEnv;
+});
+
+
 describe("ProviderRegistry - Slice 1 (DI & Constructor)", () => {
   it("should initialize with a custom config path", () => {
     const customPath = "/tmp/my-custom-provider-config.json";
@@ -86,4 +97,67 @@ describe("ProviderRegistry - Slice 2 (Config Loader & Saver)", () => {
     } catch {}
   });
 });
+
+describe("ProviderRegistry - Slice 3 (Dynamic Env Mapping)", () => {
+  let tempConfigPath: string;
+
+  beforeEach(() => {
+    tempConfigPath = join(tmpdir(), `pokaico-test-provider-env-${Date.now()}-${Math.random().toString(36).substring(2)}.json`);
+  });
+
+  afterEach(() => {
+    if (existsSync(tempConfigPath)) {
+      try {
+        unlinkSync(tempConfigPath);
+      } catch {}
+    }
+  });
+
+  it("should map saved keys to process.env on load and save", async () => {
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    const registry = new ProviderRegistry(tempConfigPath);
+    await registry.save({
+      apiKeys: { google: "key-google-test", openai: "key-openai-test" }
+    });
+
+    expect(process.env.GOOGLE_GENERATIVE_AI_API_KEY).toBe("key-google-test");
+    expect(process.env.OPENAI_API_KEY).toBe("key-openai-test");
+
+    // Reset env vars and load again
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    await registry.load();
+    expect(process.env.GOOGLE_GENERATIVE_AI_API_KEY).toBe("key-google-test");
+    expect(process.env.OPENAI_API_KEY).toBe("key-openai-test");
+  });
+
+  it("should support dynamic mapping for custom/unknown providers via uppercase env naming", async () => {
+    const customEnvVar = "MYCUSTOMPROVIDER_API_KEY";
+    delete process.env[customEnvVar];
+
+    const registry = new ProviderRegistry(tempConfigPath);
+    await registry.save({
+      apiKeys: { mycustomprovider: "custom-key-123" }
+    });
+
+    expect(process.env[customEnvVar]).toBe("custom-key-123");
+  });
+
+  it("should fall back to reading process.env if the config does not have the key", async () => {
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = "env-google-key";
+    
+    const registry = new ProviderRegistry(tempConfigPath);
+    // Load config that doesn't have the google key
+    const config = await registry.load();
+    expect(config.apiKeys?.google).toBeUndefined();
+
+    // Verify key falls back to process.env (registry can resolve it, e.g. registry.getApiKey("google"))
+    const resolvedKey = registry.getApiKey("google");
+    expect(resolvedKey).toBe("env-google-key");
+  });
+});
+
 
