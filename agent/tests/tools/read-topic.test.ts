@@ -41,4 +41,15 @@ describe("read_topic tool", () => {
     expect(result.content).toContain("Work stress notes.");
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it("rejects path traversal in topicId", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "read-topic-trav-"));
+    mkdirSync(join(dir, "topics"), { recursive: true });
+
+    const tool = createReadTopicTool(dir);
+    const result = await tool.execute({ topicId: "../../etc/passwd" });
+    expect(result.exists).toBe(false);
+    expect(result.content).toBe("(invalid topicId)");
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
