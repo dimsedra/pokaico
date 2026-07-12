@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, readdirSync, appendFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join, extname } from "node:path";
 
 export type JournalTurn = {
@@ -60,18 +61,17 @@ function normalizeEol(raw: string): string {
   return raw.replace(/\r\n/g, "\n");
 }
 
-export function readSession(path: string): JournalSession {
-  const raw = readFileSync(path, "utf-8");
+export function parseJournalContent(raw: string): JournalSession {
   const normalized = normalizeEol(raw);
   const lines = normalized.split("\n");
 
   if (lines.length < 2 || lines[0] !== "---") {
-    throw new Error(`Invalid journal file: missing frontmatter in ${path}`);
+    throw new Error(`missing frontmatter`);
   }
 
   const fmEnd = lines.indexOf("---", 1);
   if (fmEnd === -1) {
-    throw new Error(`Invalid journal file: unclosed frontmatter in ${path}`);
+    throw new Error(`unclosed frontmatter`);
   }
 
   const fmLines = lines.slice(1, fmEnd);
@@ -111,6 +111,24 @@ export function readSession(path: string): JournalSession {
     extracted: fm["extracted"] === "true",
     turns,
   };
+}
+
+export function readSession(path: string): JournalSession {
+  const raw = readFileSync(path, "utf-8");
+  try {
+    return parseJournalContent(raw);
+  } catch (err) {
+    throw new Error(`Invalid journal file: ${(err as Error).message} in ${path}`);
+  }
+}
+
+export async function readSessionAsync(path: string): Promise<JournalSession> {
+  const raw = await readFile(path, "utf-8");
+  try {
+    return parseJournalContent(raw);
+  } catch (err) {
+    throw new Error(`Invalid journal file: ${(err as Error).message} in ${path}`);
+  }
 }
 
 export function listSessions(journalDir: string): SessionMeta[] {

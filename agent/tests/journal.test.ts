@@ -7,6 +7,8 @@ import {
   appendTurn,
   readSession,
   listSessions,
+  parseJournalContent,
+  readSessionAsync,
   type JournalTurn,
 } from "../src/memory/journal";
 
@@ -335,3 +337,60 @@ describe("edge cases", () => {
     expect(sessions).toHaveLength(2);
   });
 });
+
+describe("parseJournalContent", () => {
+  it("should parse frontmatter and turns from a string correctly", () => {
+    const raw = [
+      "---",
+      "session_id: parse-str",
+      "started_at: 2026-07-08T14:02:11+07:00",
+      "model: gpt-test",
+      "extracted: false",
+      "---",
+      "",
+      "## [14:02:11] User",
+      "Hello world!",
+    ].join("\n");
+
+    const session = parseJournalContent(raw);
+    expect(session.sessionId).toBe("parse-str");
+    expect(session.model).toBe("gpt-test");
+    expect(session.turns).toHaveLength(1);
+    expect(session.turns[0].content).toBe("Hello world!");
+  });
+
+  it("should throw error if frontmatter is missing", () => {
+    expect(() => parseJournalContent("no frontmatter")).toThrow("missing frontmatter");
+  });
+});
+
+describe("readSessionAsync", () => {
+  it("should asynchronously read a journal file and parse it", async () => {
+    const path = join(tmpDir, "async-parse-test.md");
+    const raw = [
+      "---",
+      "session_id: async-id",
+      "started_at: 2026-07-08T14:02:11+07:00",
+      "model: sonnet-test",
+      "extracted: true",
+      "---",
+      "",
+      "## [14:02:11] Pokai",
+      "I am active asynchronously!",
+    ].join("\n");
+
+    writeFileSync(path, raw, "utf-8");
+
+    const session = await readSessionAsync(path);
+    expect(session.sessionId).toBe("async-id");
+    expect(session.model).toBe("sonnet-test");
+    expect(session.extracted).toBe(true);
+    expect(session.turns).toHaveLength(1);
+    expect(session.turns[0].content).toBe("I am active asynchronously!");
+  });
+
+  it("should throw error if file does not exist", async () => {
+    await expect(() => readSessionAsync(join(tmpDir, "nonexistent-file.md"))).rejects.toThrow();
+  });
+});
+
