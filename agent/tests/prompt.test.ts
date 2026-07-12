@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildPrompt } from "../src/mastra/prompt";
@@ -63,3 +63,136 @@ describe("buildPrompt - basic assembly", () => {
     expect(prompt).toContain("(No recurring patterns detected yet.)");
   });
 });
+
+describe("buildPrompt - recent history accumulation", () => {
+  it("should accumulate the last N turns across multiple sessions chronologically", async () => {
+    const histJournalDir = join(tmpDir, "hist-journal");
+    mkdirSync(histJournalDir, { recursive: true });
+
+    const path1 = join(histJournalDir, "2026-07-08-session1.md");
+    const path2 = join(histJournalDir, "2026-07-08-session2.md");
+
+    // Write older session (session1)
+    writeFileSync(
+      path1,
+      [
+        "---",
+        "session_id: sess1",
+        "started_at: 2026-07-08T10:00:00+07:00",
+        "model: test",
+        "extracted: false",
+        "---",
+        "",
+        "## [10:00:01] User",
+        "Message 1",
+        "",
+        "## [10:00:02] Pokai",
+        "Message 2",
+        "",
+        "## [10:00:03] User",
+        "Message 3",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    // Write newer session (session2)
+    writeFileSync(
+      path2,
+      [
+        "---",
+        "session_id: sess2",
+        "started_at: 2026-07-08T11:00:00+07:00",
+        "model: test",
+        "extracted: false",
+        "---",
+        "",
+        "## [11:00:01] User",
+        "Message 4",
+        "",
+        "## [11:00:02] Pokai",
+        "Message 5",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    // Set modification times explicitly (path2 is newer than path1)
+    const now = Date.now();
+    utimesSync(path1, new Date(now - 10000), new Date(now - 10000));
+    utimesSync(path2, new Date(now), new Date(now));
+
+    const prompt = await buildPrompt(memoryDir, undefined, histJournalDir);
+
+    // Verify recent history section exists in the prompt
+    expect(prompt).toContain("Recent Conversation History");
+
+    // Verify it contains the accumulated turns in chronological order
+    // Expected turns gathered: Message 2, Message 3 (from sess1) + Message 4, Message 5 (from sess2)
+    // (since default history capacity is 10, it gathers all 5 turns)
+    expect(prompt).toContain("User: Message 1");
+    expect(prompt).toContain("Pokai: Message 2");
+    expect(prompt).toContain("User: Message 3");
+    expect(prompt).toContain("User: Message 4");
+    expect(prompt).toContain("Pokai: Message 5");
+
+    // Verify order of appearance: Message 3 must appear before Message 4
+    const idx3 = prompt.indexOf("Message 3");
+    const idx4 = prompt.indexOf("Message 4");
+    expect(idx3).toBeLessThan(idx4);
+  });
+
+  it("should sort sessions alphabetically as a tie-breaker if mtimeMs is identical", async () => {
+    const tieJournalDir = join(tmpDir, "tie-journal");
+    mkdirSync(tieJournalDir, { recursive: true });
+
+    // Filenames: session-bbb.md vs session-aaa.md (bbb.md is alphabetically larger/later)
+    const pathA = join(tieJournalDir, "2026-07-08-session-aaa.md");
+    const pathB = join(tieJournalDir, "2026-07-08-session-bbb.md");
+
+    writeFileSync(
+      pathA,
+      [
+        "---",
+        "session_id: sessA",
+        "started_at: 2026-07-08T10:00:00+07:00",
+        "model: test",
+        "extracted: false",
+        "---",
+        "",
+        "## [10:00:01] User",
+        "From Session A",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    writeFileSync(
+      pathB,
+      [
+        "---",
+        "session_id: sessB",
+        "started_at: 2026-07-08T11:00:00+07:00",
+        "model: test",
+        "extracted: false",
+        "---",
+        "",
+        "## [11:00:01] User",
+        "From Session B",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    // Set identical modification times
+    const sameTime = new Date();
+    utimesSync(pathA, sameTime, sameTime);
+    utimesSync(pathB, sameTime, sameTime);
+
+    const prompt = await buildPrompt(memoryDir, undefined, tieJournalDir);
+
+    // Since bbb.md is alphabetically larger, in descending order bbb.md is treated as "newer" (latest).
+    // So session B turns should be chronologically AFTER session A turns in the prompt chunk alignment.
+    // Index of "From Session A" should be less than "From Session B".
+    const idxA = prompt.indexOf("From Session A");
+    const idxB = prompt.indexOf("From Session B");
+    expect(idxA).toBeLessThan(idxB);
+  });
+});
+
