@@ -12,6 +12,17 @@ function fakeEmbedding(results: SearchResult[]) {
   };
 }
 
+// Spy embedding: counts calls and (optionally) throws, to prove economy + resilience.
+function spyEmbedding(opts: { results?: SearchResult[]; throws?: boolean } = {}) {
+  const calls: string[] = [];
+  const impl = async (q: string, _limit?: number): Promise<SearchResult[]> => {
+    calls.push(q);
+    if (opts.throws) throw new Error("embedding boom");
+    return opts.results ?? [];
+  };
+  return { searchSimilar: impl, calls };
+}
+
 describe("search_topics tool", () => {
   it("uses INDEX-primary route and returns summary as snippet", async () => {
     const dir = mkdtempSync(join(tmpdir(), "search-index-"));
@@ -106,6 +117,76 @@ describe("search_topics tool", () => {
     const result = await tool.execute({ query: "travel plans" });
 
     expect(result.results[0].snippet.length).toBeLessThanOrEqual(200);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("does NOT call embedding when INDEX resolves the query (economy)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "search-econ-"));
+    const topicsDir = join(dir, "topics");
+    mkdirSync(topicsDir, { recursive: true });
+    writeFileSync(join(topicsDir, "work-schedule"), "", "utf-8");
+    writeFileSync(
+      join(dir, "INDEX.md"),
+      "# Memory Index\n\n- **work-schedule**: the user's weekly work schedule and shifts\n",
+      "utf-8",
+    );
+
+    const spy = spyEmbedding({ results: [{ topicId: "x", content: "should not appear", score: 0.9, sourcePath: "p" }] });
+    const tool = createSearchTopicsTool({ memoryDir: dir, embedding: spy });
+    const result = await tool.execute({ query: "work schedule" });
+
+    expect(result.results[0].topicId).toBe("work-schedule");
+    expect(spy.calls.length).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("caps INDEX-sourced snippet at 200 characters", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "search-capidx-"));
+    const topicsDir = join(dir, "topics");
+    mkdirSync(topicsDir, { recursive: true });
+    writeFileSync(join(topicsDir, "long"), "", "utf-8");
+    const longSummary = "summary ".repeat(40); // >200 chars
+    writeFileSync(join(dir, "INDEX.md"), `# Memory Index\n\n- **long**: ${longSummary}\n`, "utf-8");
+
+    const tool = createSearchTopicsTool({ memoryDir: dir, embedding: fakeEmbedding([]) });
+    const result = await tool.execute({ query: "summary" });
+
+    expect(result.results[0].source).toBe("index");
+    expect(result.results[0].snippet.length).toBeLessThanOrEqual(200);
+    expect(result.results[0].snippet.length).toBeLessThan(longSummary.length);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("degrades to found=0 without throwing when embedding throws", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "search-throw-"));
+    mkdirSync(join(dir, "topics"), { recursive: true });
+
+    const spy = spyEmbedding({ throws: true });
+    const tool = createSearchTopicsTool({ memoryDir: dir, embedding: spy });
+    const result = await tool.execute({ query: "anything" });
+
+    expect(result.found).toBe(0);
+    expect(result.results).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("ranks INDEX hits by lexical overlap (higher overlap first)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "search-rank-"));
+    const topicsDir = join(dir, "topics");
+    mkdirSync(topicsDir, { recursive: true });
+    writeFileSync(join(topicsDir, "cycling"), "", "utf-8");
+    writeFileSync(join(topicsDir, "work"), "", "utf-8");
+    writeFileSync(
+      join(dir, "INDEX.md"),
+      "# Memory Index\n\n- **cycling**: bike commute and cycling routes\n- **work**: general work notes\n",
+      "utf-8",
+    );
+
+    const tool = createSearchTopicsTool({ memoryDir: dir, embedding: fakeEmbedding([]) });
+    const result = await tool.execute({ query: "bike cycling commute work" });
+
+    expect(result.results[0].topicId).toBe("cycling");
+    expect(result.results[1].topicId).toBe("work");
     rmSync(dir, { recursive: true, force: true });
   });
 

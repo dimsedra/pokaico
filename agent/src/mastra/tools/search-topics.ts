@@ -23,22 +23,28 @@ export const createSearchTopicsTool = (deps: { memoryDir: string; embedding: Top
 
       const idxMap = new Map(parseIndex(memoryDir).map((e) => [e.topicId, e.summary]));
 
-      const fbResults: SearchResult[] = await embedding.searchSimilar(query, 20).catch(() => []);
+      // Capture the fallback (embedding/FTS) results that routeTopics fetches so we
+      // can reuse them for snippet text — without a second embedding call, and
+      // without firing the model when INDEX already resolves the query. SPEC §7's
+      // economy: INDEX-primary must avoid the expensive call whenever it can route.
+      let captured: SearchResult[] = [];
+      const searchSimilar = async (q: string, limit?: number): Promise<RouteSearchResult[]> => {
+        const r = await embedding.searchSimilar(q, limit).catch(() => []);
+        captured = r;
+        return r as RouteSearchResult[];
+      };
+
+      const ids = await routeTopics(memoryDir, query, { searchSimilar, limit: 5 });
+
       const fbMap = new Map<string, string>();
-      for (const r of fbResults) {
+      for (const r of captured) {
         if (!fbMap.has(r.topicId)) fbMap.set(r.topicId, r.content);
       }
 
-      const ids = await routeTopics(memoryDir, query, {
-        searchSimilar: embedding.searchSimilar as (q: string, limit?: number) => Promise<RouteSearchResult[]>,
-        limit: 5,
-      });
-
       const results = ids.slice(0, 5).map((topicId) => {
         const inIndex = idxMap.has(topicId);
-        const snippet = inIndex
-          ? (idxMap.get(topicId) ?? "")
-          : (fbMap.get(topicId)?.slice(0, SNIPPET_CAP) ?? "");
+        const raw = inIndex ? (idxMap.get(topicId) ?? "") : (fbMap.get(topicId) ?? "");
+        const snippet = raw.length > SNIPPET_CAP ? raw.slice(0, SNIPPET_CAP) : raw;
         return {
           topicId,
           snippet,
