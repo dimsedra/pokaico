@@ -190,6 +190,38 @@ describe("search_topics tool", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("labels an in-INDEX topic as 'embedding' when reached via fallback", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "search-reroute-"));
+    const topicsDir = join(dir, "topics");
+    mkdirSync(topicsDir, { recursive: true });
+    writeFileSync(join(topicsDir, "travel"), "", "utf-8");
+    writeFileSync(
+      join(dir, "INDEX.md"),
+      "# Memory Index\n\n- **travel**: the user's trips and destinations\n",
+      "utf-8",
+    );
+
+    // Query has zero lexical tokens (no INDEX match), but the embedding
+    // fallback returns the in-INDEX topic. It MUST be labeled "embedding"
+    // with the chunk snippet, not the INDEX summary.
+    const fb: SearchResult[] = [
+      {
+        topicId: "travel",
+        content: "User enjoys remote cabins in the mountains.",
+        score: 0.88,
+        sourcePath: "memory/topics/travel/CONTEXT.md",
+      },
+    ];
+    const tool = createSearchTopicsTool({ memoryDir: dir, embedding: fakeEmbedding(fb) });
+    const result = await tool.execute({ query: "???" });
+
+    expect(result.results[0].topicId).toBe("travel");
+    expect(result.results[0].source).toBe("embedding");
+    expect(result.results[0].snippet).toContain("remote cabins");
+    expect(result.results[0].snippet).not.toContain("trips and destinations");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("returns a validation error object for empty query", async () => {
     const dir = mkdtempSync(join(tmpdir(), "search-emptyq-"));
     mkdirSync(join(dir, "topics"), { recursive: true });
