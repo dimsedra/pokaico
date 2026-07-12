@@ -139,7 +139,7 @@ Tracking issues:
 
 ---
 
-## Phase 4: Mastra Agent + Retrieval Tools + IPC [ ]
+## Phase 4: Mastra Agent + Retrieval Tools + IPC [✅ Group A — Tasks 1-3 complete]
 
 **Scope:** Mastra conversational agent, 6 retrieval tools as Mastra tools, system prompt with INDEX-primary routing, native Tauri IPC bridge.
 **Arsitektur komunikasi:** Frontend ↔ Tauri Rust command ↔ stdin/stdout ↔ Node sidecar. Native IPC sejak awal agar tak perlu migrasi di v0.2.
@@ -168,8 +168,8 @@ Tracking issues:
   - **Mastra model router** → agent runtime pakai format `"provider/model"` (Mastra resolve ke AI SDK)
   - Keduanya dipakai, peran berbeda: models.dev buat katalog/pricing, Mastra buat jalanin model
   - Mastra v1.18.2 depend pada `@mastra/core` (belum terinstall) — selesaikan di Task 3
-- [ ] **Task 2 — System prompt builder** (`agent/src/mastra/prompt.ts`): `buildPrompt(memoryDir, query?)` → inject INDEX.md + 3 foundational topics + recent journal summary. Output string instruksi agent.
-- [ ] **Task 3 — Agent factory** (`agent/src/mastra/index.ts`): `createAgent({ model, tools, memoryDir })` → return Mastra agent tanpa tools (factory terima tools sbg parameter).
+- [x] **Task 2 — System prompt builder** (`agent/src/mastra/prompt.ts`): `buildPrompt(memoryDir, query?)` → inject INDEX.md + 3 foundational topics + recent journal summary. Output string instruksi agent.
+- [x] **Task 3 — Agent factory** (`agent/src/mastra/index.ts`): `createAgent({ model, tools, memoryDir })` → return Mastra agent. Factory terima tools sbg parameter, fallback ke static prompt jika fail. (commit + test)
 
 ### Group B — Tools (standalone, test masing-masing)
 - [ ] **Task 4 — `read_topic`** (`agent/src/mastra/tools/read-topic.ts`): baca CONTEXT.md dari filesystem
