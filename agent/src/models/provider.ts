@@ -3,7 +3,7 @@ import { join, dirname } from "node:path";
 import { settingsFilePath } from "../config";
 import { providers as snapshotProviders } from "@opencode-ai/models/snapshot";
 import { ModelRouterLanguageModel } from "@mastra/core/llm";
-import { Models } from "@opencode-ai/models";
+import { Models, type ProviderMap } from "@opencode-ai/models";
 
 export interface ProviderConfig {
   activeProvider?: string;
@@ -152,7 +152,7 @@ export class ProviderRegistry {
     return new ModelRouterLanguageModel(modelStr);
   }
 
-  private formatCatalog(providerMap: Record<string, any>): UIModel[] {
+  private formatCatalog(providerMap: ProviderMap): UIModel[] {
     const result: UIModel[] = [];
     for (const [providerId, provider] of Object.entries(providerMap)) {
       if (provider && provider.models) {
@@ -183,7 +183,7 @@ export class ProviderRegistry {
   async getAvailableModels(): Promise<UIModel[]> {
     try {
       const client = Models.make();
-      const catalog = await client.catalog();
+      const catalog = await client.catalog({ signal: AbortSignal.timeout(2000) });
       return this.formatCatalog(catalog.providers);
     } catch {
       // Fallback to local snapshot
