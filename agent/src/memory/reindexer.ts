@@ -3,13 +3,10 @@ import { join } from "node:path";
 import type { PokaicoDb } from "../db/client";
 import { countTokens } from "./tokens";
 import { purgeTopicChunks } from "../embeddings/search";
+import { resourcesDir } from "./topics";
 
 function contextPath(memoryDir: string, topicId: string): string {
   return join(memoryDir, "topics", topicId, "CONTEXT.md");
-}
-
-function resourcesDir(memoryDir: string, topicId: string): string {
-  return join(memoryDir, "topics", topicId, "resources");
 }
 
 export async function reindexTopics(

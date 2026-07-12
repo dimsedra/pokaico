@@ -81,6 +81,55 @@ describe("read_resource tool", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("reads a .md resource directly without double-suffixing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rr-md-"));
+    const rd = join(dir, "topics", "notes", "resources");
+    mkdirSync(rd, { recursive: true });
+    writeFileSync(join(rd, "ideas.md"), "Markdown ideas.");
+
+    const { extractor, calls } = fakeExtractor();
+    const tool = createReadResourceTool({ memoryDir: dir, extractor });
+    const result = await tool.execute({ topicId: "notes", resource: "ideas.md" });
+
+    expect(result.exists).toBe(true);
+    expect(result.source).toBe("companion-md");
+    expect(result.content).toBe("Markdown ideas.");
+    expect(calls.length).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns empty content (no error) when the extractor yields an empty string", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rr-empty-"));
+    const rd = join(dir, "topics", "x", "resources");
+    mkdirSync(rd, { recursive: true });
+    writeFileSync(join(rd, "doc.pdf"), "%PDF%");
+
+    const { extractor } = fakeExtractor({ text: "" });
+    const tool = createReadResourceTool({ memoryDir: dir, extractor });
+    const result = await tool.execute({ topicId: "x", resource: "doc.pdf" });
+
+    expect(result.exists).toBe(true);
+    expect(result.source).toBe("extracted");
+    expect(result.content).toBe("");
+    expect(result.error).toBeUndefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("rejects control-character filenames at the schema layer", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rr-ctrl-"));
+    mkdirSync(join(dir, "topics", "x"), { recursive: true });
+
+    const { extractor } = fakeExtractor();
+    const tool = createReadResourceTool({ memoryDir: dir, extractor });
+    const result = (await tool.execute({ topicId: "x", resource: "a\x00b" })) as {
+      error?: boolean;
+      message?: string;
+    };
+    expect(result.error).toBe(true);
+    expect(result.message ?? "").toContain("resource");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("degrades gracefully when the extractor throws", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rr-extractfail-"));
     const rd = join(dir, "topics", "x", "resources");
@@ -92,7 +141,7 @@ describe("read_resource tool", () => {
     const result = await tool.execute({ topicId: "x", resource: "doc.pdf" });
 
     expect(result.exists).toBe(true);
-    expect(result.source).toBe("extracted");
+    expect(result.source).toBeNull();
     expect(result.content).toBeNull();
     expect(typeof result.error).toBe("string");
     rmSync(dir, { recursive: true, force: true });
