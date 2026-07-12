@@ -196,3 +196,55 @@ describe("buildPrompt - recent history accumulation", () => {
   });
 });
 
+describe("buildPrompt - error shielding", () => {
+  it("should handle completely missing journalDir gracefully", async () => {
+    const missingJournalDir = join(tmpDir, "completely-missing-journal-dir");
+    // Do not create this folder. readdir(missingJournalDir) will throw ENOENT.
+
+    const prompt = await buildPrompt(memoryDir, undefined, missingJournalDir);
+    expect(prompt).toContain("Pokai");
+    // Should not contain recent history block since it's empty/missing
+    expect(prompt).not.toContain("Recent Conversation History");
+  });
+
+  it("should skip corrupted journal files and parse valid ones without throwing", async () => {
+    const corruptJournalDir = join(tmpDir, "corrupt-journal");
+    mkdirSync(corruptJournalDir, { recursive: true });
+
+    const pathCorrupt = join(corruptJournalDir, "2026-07-08-corrupt.md");
+    const pathValid = join(corruptJournalDir, "2026-07-08-valid.md");
+
+    // Write corrupted file (no frontmatter)
+    writeFileSync(pathCorrupt, "This file is completely corrupt\n## [10:00:00] User\nHello", "utf-8");
+
+    // Write valid file
+    writeFileSync(
+      pathValid,
+      [
+        "---",
+        "session_id: val",
+        "started_at: 2026-07-08T12:00:00+07:00",
+        "model: test",
+        "extracted: false",
+        "---",
+        "",
+        "## [12:00:00] User",
+        "Valid message here",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    // Make corrupt.md newer so it would normally be processed first
+    const now = Date.now();
+    utimesSync(pathCorrupt, new Date(now), new Date(now));
+    utimesSync(pathValid, new Date(now - 10000), new Date(now - 10000));
+
+    const prompt = await buildPrompt(memoryDir, undefined, corruptJournalDir);
+
+    expect(prompt).toContain("Pokai");
+    // Should contain the valid message
+    expect(prompt).toContain("Valid message here");
+  });
+});
+
+
