@@ -1,13 +1,25 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { settingsFilePath } from "../config";
-import { providers } from "@opencode-ai/models/snapshot";
+import { providers as snapshotProviders } from "@opencode-ai/models/snapshot";
 import { ModelRouterLanguageModel } from "@mastra/core/llm";
+import { Models } from "@opencode-ai/models";
 
 export interface ProviderConfig {
   activeProvider?: string;
   activeModel?: string;
   apiKeys?: Record<string, string>;
+}
+
+export interface UIModel {
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  name: string;
+  description: string;
+  contextWindow: number;
+  inputCost: number;
+  outputCost: number;
 }
 
 export class ProviderRegistry {
@@ -29,7 +41,7 @@ export class ProviderRegistry {
   }
 
   private getEnvVarNamesForProvider(providerId: string): string[] {
-    const known = providers[providerId];
+    const known = snapshotProviders[providerId];
     if (known && Array.isArray(known.env)) {
       return known.env;
     }
@@ -138,5 +150,45 @@ export class ProviderRegistry {
   resolveActiveModelInstance(): ModelRouterLanguageModel {
     const modelStr = this.resolveActiveModel();
     return new ModelRouterLanguageModel(modelStr);
+  }
+
+  private formatCatalog(providerMap: Record<string, any>): UIModel[] {
+    const result: UIModel[] = [];
+    for (const [providerId, provider] of Object.entries(providerMap)) {
+      if (provider && provider.models) {
+        for (const [modelId, model] of Object.entries(provider.models)) {
+          if (
+            model &&
+            model.modalities &&
+            Array.isArray(model.modalities.output) &&
+            model.modalities.output.includes("text")
+          ) {
+            result.push({
+              providerId,
+              providerName: provider.name || providerId,
+              modelId,
+              name: model.name || modelId,
+              description: model.description || "",
+              contextWindow: model.limit?.context || 0,
+              inputCost: model.cost?.input ?? 0,
+              outputCost: model.cost?.output ?? 0,
+            });
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  async getAvailableModels(): Promise<UIModel[]> {
+    try {
+      const client = Models.make();
+      const catalog = await client.catalog();
+      return this.formatCatalog(catalog.providers);
+    } catch {
+      // Fallback to local snapshot
+      const { providers: snapProviders } = await import("@opencode-ai/models/snapshot");
+      return this.formatCatalog(snapProviders);
+    }
   }
 }

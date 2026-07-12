@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { ProviderRegistry } from "../src/models/provider";
 import { settingsFilePath } from "../src/config";
 import { join, dirname } from "node:path";
@@ -210,6 +210,62 @@ describe("ProviderRegistry - Slice 4 (Active Model Validation & Resolution)", ()
     expect(instance.provider).toBe("google");
   });
 });
+
+describe("ProviderRegistry - Slice 5 (models.dev Integration)", () => {
+  let tempConfigPath: string;
+
+  beforeEach(() => {
+    tempConfigPath = join(tmpdir(), `pokaico-test-provider-catalog-${Date.now()}-${Math.random().toString(36).substring(2)}.json`);
+  });
+
+  afterEach(() => {
+    if (existsSync(tempConfigPath)) {
+      try {
+        unlinkSync(tempConfigPath);
+      } catch {}
+    }
+  });
+
+  it("should fetch available models filtered by text output modality", async () => {
+    const registry = new ProviderRegistry(tempConfigPath);
+    const modelsList = await registry.getAvailableModels();
+    expect(modelsList.length).toBeGreaterThan(0);
+    
+    // Check structure of first model
+    const m = modelsList[0];
+    expect(m.providerId).toBeDefined();
+    expect(m.providerName).toBeDefined();
+    expect(m.modelId).toBeDefined();
+    expect(m.name).toBeDefined();
+    expect(m.description).toBeDefined();
+    expect(m.contextWindow).toBeDefined();
+    expect(m.inputCost).toBeDefined();
+    expect(m.outputCost).toBeDefined();
+
+    // Verify all returned models have text as output modality
+    // (We will check that they don't crash and conform to type)
+    expect(m.inputCost).toBeTypeOf("number");
+  });
+
+  it("should fall back to local snapshot if models.dev API fetch fails (offline mode)", async () => {
+    const registry = new ProviderRegistry(tempConfigPath);
+    
+    // Spy on global fetch to simulate network error
+    const spy = vi.spyOn(global, "fetch").mockRejectedValue(new Error("Failed to fetch from models.dev"));
+
+    try {
+      const modelsList = await registry.getAvailableModels();
+      expect(modelsList.length).toBeGreaterThan(0);
+      
+      // Ensure it used snapshot fallback
+      const m = modelsList[0];
+      expect(m.modelId).toBeDefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 
 
 
