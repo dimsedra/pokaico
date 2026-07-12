@@ -2,9 +2,9 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { TopicChange } from "./types";
 import { withTopicLock } from "./mutex";
+import { VALID_TOPIC_RE } from "./topics";
 
 const PROVENANCE_PREFIX = "[src:%s:%d]";
-const VALID_TOPIC_RE = /^[a-z0-9][a-z0-9-]{0,80}$/;
 
 function topicDir(memoryDir: string, topicId: string): string {
   return join(memoryDir, "topics", topicId);

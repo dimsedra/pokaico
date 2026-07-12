@@ -2,6 +2,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, rmSync,
 import { join } from "node:path";
 import type { PokaicoDb } from "../db/client";
 
+// Shared validation pattern for topicId slugs. Used by writer.ts and tools
+// to ensure topic IDs are safe for filesystem access.
+export const VALID_TOPIC_RE = /^[a-z0-9][a-z0-9-]{0,80}$/;
+
 export type TopicMeta = {
   topicId: string;
   summary: string;
@@ -30,8 +34,12 @@ export function createTopic(memoryDir: string, topicId: string, content: string)
 
 export function readTopic(memoryDir: string, topicId: string): string | null {
   const path = contextPath(memoryDir, topicId);
-  if (!existsSync(path)) return null;
-  return readFileSync(path, "utf-8");
+  try {
+    if (!existsSync(path)) return null;
+    return readFileSync(path, "utf-8");
+  } catch {
+    return null;
+  }
 }
 
 export function updateTopic(memoryDir: string, topicId: string, content: string): void {
