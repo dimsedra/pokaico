@@ -112,7 +112,7 @@ function markJournalExtracted(filePath: string): void {
   const fmBody = content.slice(fmStart + 4, fmEnd);
   const after = content.slice(fmEnd);
 
-  const updatedFm = fmBody.replace(/^extracted: false$/m, "extracted: true");
+  const updatedFm = fmBody.replace(/^extracted:\s*["']?false["']?\s*$/m, "extracted: true");
   if (updatedFm === fmBody) return;
 
   writeFileSync(filePath, `${before}${updatedFm}${after}`, "utf-8");

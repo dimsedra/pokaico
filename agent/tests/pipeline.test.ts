@@ -245,6 +245,52 @@ describe("pipeline E2E", () => {
     expect(fmBody).not.toContain("extracted: false");
   });
 
+  it("marks journal as extracted even when formatted with quotes or extra spacing", async () => {
+    const sessionId = "mark-extracted-spacing";
+    const startedAt = "2026-07-08T17:00:00+07:00";
+    const path = join(journalDir, `2026-07-08-${sessionId}.md`);
+
+    // Write frontmatter with extra spaces and quotes for extracted
+    writeFileSync(path, [
+      "---",
+      `session_id: ${sessionId}`,
+      `started_at: ${startedAt}`,
+      "model: test-model",
+      'extracted:  "false"',
+      "---",
+      "",
+      "## [17:00:00] User",
+      "Test message."
+    ].join("\n"), "utf-8");
+
+    mockSummarize.mockResolvedValue({
+      summary: "Test session.",
+      keyPoints: ["Test point"],
+    });
+    mockRefresh.mockResolvedValue([]);
+
+    const searchSimilar = vi.fn().mockResolvedValue([]);
+    const indexTopic = vi.fn().mockResolvedValue(undefined);
+    const mockLlm = {} as never;
+
+    await processSession(sessionId, {
+      llm: mockLlm,
+      searchSimilar,
+      indexTopic,
+      db,
+      memoryDir,
+      journalDir,
+    });
+
+    const updated = readFileSync(path, "utf-8");
+    expect(updated).toContain("extracted: true");
+
+    const fmStart = updated.indexOf("---\n");
+    const fmEnd = updated.indexOf("\n---", fmStart + 4);
+    const fmBody = updated.slice(fmStart + 4, fmEnd);
+    expect(fmBody).not.toContain("extracted:  \"false\"");
+  });
+
   it("returns error on summarization failure", async () => {
     const sessionId = "summarize-fail";
     const startedAt = "2026-07-08T18:00:00+07:00";
