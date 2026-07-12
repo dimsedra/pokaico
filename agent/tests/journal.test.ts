@@ -9,6 +9,7 @@ import {
   listSessions,
   parseJournalContent,
   readSessionAsync,
+  listSessionsAsync,
   type JournalTurn,
 } from "../src/memory/journal";
 
@@ -269,7 +270,7 @@ describe("edge cases", () => {
     expect(session.turns[0].content).toContain("horizontal rule");
   });
 
-  it("returns undefined sessionId when frontmatter field is missing", () => {
+  it("throws a parsing error when required frontmatter fields are missing", () => {
     const path = join(tmpDir, "missing-fm.md");
     writeFileSync(
       path,
@@ -281,10 +282,7 @@ describe("edge cases", () => {
       ].join("\n"),
     );
 
-    const session = readSession(path);
-    expect(session.sessionId).toBeUndefined();
-    expect(session.model).toBe("t");
-    expect(session.extracted).toBe(true);
+    expect(() => readSession(path)).toThrow("missing required frontmatter field: session_id");
   });
 
   it("skips non-.md files in listSessions", () => {
@@ -393,4 +391,85 @@ describe("readSessionAsync", () => {
     await expect(() => readSessionAsync(join(tmpDir, "nonexistent-file.md"))).rejects.toThrow();
   });
 });
+
+describe("journal - code review fixes", () => {
+  it("parses headers with variations in casing and spacing and captures toolName", () => {
+    const raw = [
+      "---",
+      "session_id: test-case",
+      "started_at: 2026-07-08T14:00:00+07:00",
+      "model: test",
+      "extracted: false",
+      "---",
+      "",
+      "## [14:00:00] user",
+      "Hello",
+      "## [14:00:01] Pokai ",
+      "Hi!",
+      "## [14:00:02] Tool:search_topics",
+      "result"
+    ].join("\n");
+    const session = parseJournalContent(raw);
+    expect(session.turns).toHaveLength(3);
+    expect(session.turns[0].role).toBe("user");
+    expect(session.turns[1].role).toBe("pokai");
+    expect(session.turns[2].role).toBe("tool");
+    expect(session.turns[2].toolName).toBe("search_topics");
+  });
+
+  it("handles files containing UTF-8 BOM and leading newlines", () => {
+    const raw = "\uFEFF\n\n---\nsession_id: bom-test\nstarted_at: 2026-07-08T10:00:00+07:00\nmodel: m\nextracted: false\n---";
+    expect(() => parseJournalContent(raw)).not.toThrow();
+  });
+
+  it("strips YAML comments from frontmatter lines during parsing", () => {
+    const raw = [
+      "---",
+      "session_id: yaml-comments # This is a comment",
+      "started_at: 2026-07-08T10:00:00+07:00",
+      "model: test-model # Main model",
+      "extracted: false",
+      "---",
+    ].join("\n");
+    const session = parseJournalContent(raw);
+    expect(session.sessionId).toBe("yaml-comments");
+    expect(session.model).toBe("test-model");
+  });
+
+  it("skips corrupted journal files and returns only valid ones in listSessions", () => {
+    const listDir = mkdtempSync(join(tmpdir(), "pokaico-corrupt-list-"));
+    writeFileSync(join(listDir, "valid.md"), "---\nsession_id: v\nstarted_at: 2026-07-08T10:00:00+07:00\nmodel: m\nextracted: false\n---");
+    writeFileSync(join(listDir, "corrupt.md"), "corrupted content without frontmatter");
+
+    const sessions = listSessions(listDir);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].sessionId).toBe("v");
+  });
+
+  it("lists journal sessions asynchronously without blocking the event loop", async () => {
+    const listDir = mkdtempSync(join(tmpdir(), "pokaico-async-list-"));
+    writeFileSync(join(listDir, "valid-a.md"), "---\nsession_id: va\nstarted_at: 2026-07-08T10:00:00+07:00\nmodel: m\nextracted: false\n---");
+    writeFileSync(join(listDir, "valid-b.md"), "---\nsession_id: vb\nstarted_at: 2026-07-08T11:00:00+07:00\nmodel: m\nextracted: true\n---");
+
+    const sessions = await listSessionsAsync(listDir);
+    expect(sessions).toHaveLength(2);
+    expect(sessions.find(s => s.sessionId === "va")?.extracted).toBe(false);
+    expect(sessions.find(s => s.sessionId === "vb")?.extracted).toBe(true);
+  });
+
+  it("preserves and appends tool names correctly", () => {
+    const path = join(tmpDir, "tool-write-test.md");
+    writeFileSync(path, "---\nsession_id: test\nstarted_at: 2026-07-08T14:02:11+07:00\nmodel: test-model\nextracted: false\n---\n");
+    const turn: JournalTurn = {
+      timestamp: "14:03:02",
+      role: "tool",
+      toolName: "search_topics",
+      content: "result"
+    };
+    appendTurn(path, turn);
+    const content = readFileSync(path, "utf-8");
+    expect(content).toContain("## [14:03:02] Tool: search_topics");
+  });
+});
+
 
