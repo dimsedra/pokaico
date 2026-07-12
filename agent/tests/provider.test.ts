@@ -264,6 +264,42 @@ describe("ProviderRegistry - Slice 5 (models.dev Integration)", () => {
       spy.mockRestore();
     }
   });
+
+  it("should fall back to local snapshot if models.dev API fetch hangs/takes longer than 2 seconds", async () => {
+    const registry = new ProviderRegistry(tempConfigPath);
+    
+    // Spy on global fetch to simulate a hanging connection that respects abort signal
+    const spy = vi.spyOn(global, "fetch").mockImplementation((_url, options) => {
+      return new Promise((_, reject) => {
+        const signal = options?.signal;
+        if (signal?.aborted) {
+          return reject(new DOMException("The user aborted a request.", "AbortError"));
+        }
+        
+        if (signal) {
+          signal.addEventListener("abort", () => {
+            reject(new DOMException("The user aborted a request.", "AbortError"));
+          });
+        }
+        // Let it hang indefinitely so the timeout is forced to abort it
+      });
+    });
+
+    try {
+      const startTime = Date.now();
+      const modelsList = await registry.getAvailableModels();
+      const duration = Date.now() - startTime;
+      
+      expect(modelsList.length).toBeGreaterThan(0);
+      // Should abort at 2000ms, and finish shortly after
+      expect(duration).toBeLessThan(3500); 
+      
+      const m = modelsList[0];
+      expect(m.modelId).toBeDefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 
