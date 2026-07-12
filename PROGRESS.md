@@ -174,7 +174,7 @@ Tracking issues:
 ### Group B — Tools (standalone, test masing-masing)
 - [x] **Task 4 — `read_topic`** ([#15](https://github.com/dimsedra/pokaico/issues/15)) (`agent/src/mastra/tools/read-topic.ts`): baca CONTEXT.md dari filesystem
 - [x] **Task 5 — `list_topics`** ([#16](https://github.com/dimsedra/pokaico/issues/16)) (`agent/src/mastra/tools/list-topics.ts`): daftar topik dari filesystem, filter foundational/all
-- [ ] **Task 6 — `read_session`** ([#17](https://github.com/dimsedra/pokaico/issues/17)) (`agent/src/mastra/tools/read-session.ts`): baca journal transcript
+- [x] **Task 6 — `read_session`** ([#17](https://github.com/dimsedra/pokaico/issues/17)) (`agent/src/mastra/tools/read-session.ts`): baca journal transcript
 - [ ] **Task 7 — `search_topics`** ([#18](https://github.com/dimsedra/pokaico/issues/18)) (`agent/src/mastra/tools/search-topics.ts`): INDEX-primary route → FTS5/vector fallback
 - [ ] **Task 8 — `read_resource`** ([#19](https://github.com/dimsedra/pokaico/issues/19)) (`agent/src/mastra/tools/read-resource.ts`): baca resource file dari disk
 - [ ] **Task 9 — `ingest_resource`** ([#20](https://github.com/dimsedra/pokaico/issues/20)) (`agent/src/mastra/tools/ingest-resource.ts`): copy file + Xberg extraction + graph edge link
