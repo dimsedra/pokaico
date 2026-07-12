@@ -1,7 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import { listTopics } from "../../memory/topics";
-import { FOUNDATIONAL_TOPIC_IDS } from "../../memory/pipeline";
+import { listTopics, FOUNDATIONAL_TOPIC_IDS } from "../../memory/topics";
 
 export const createListTopicsTool = (memoryDir: string) =>
   createTool({
@@ -12,6 +11,7 @@ export const createListTopicsTool = (memoryDir: string) =>
     }),
     execute: async ({ filter }, _ctx) => {
       const allTopics = listTopics(memoryDir);
+      allTopics.sort((a, b) => a.topicId.localeCompare(b.topicId));
       const topics = allTopics.map((t) => ({
         topicId: t.topicId,
         summary: t.summary,

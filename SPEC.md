@@ -250,7 +250,7 @@ Everything else is loaded lazily via tools.
 |---|---|---|
 | `search_topics(query)` | Agent decides user is referencing something stored — and INDEX.md alone wasn't enough | **INDEX-primary route** (lexical match against topic summaries) first; only if that yields nothing, falls back to embedding + FTS5 search. Returns top‑5 topic IDs + snippets. Agent picks which to read. |
 | `read_topic(topicId)` | Agent wants full context on a topic after search or INDEX match | Reads `memory/topics/<topicId>/CONTEXT.md` — returns full text. |
-| `list_topics(filter?)` | Agent wants to browse the topic graph | Queries `INDEX.md` or `topics` table. Supports filter: `foundational`, `recently_updated`, or prefix match. |
+| `list_topics(filter?)` | Agent wants to browse the topic graph | Queries filesystem for topic directories. Supports filter: `foundational`. (v0.1; `recently_updated` and prefix match deferred to v0.1+). |
 | `ingest_resource(source, topicId)` | User shares/uploadsa file via chat | Copies original to `memory/topics/<topicId>/resources/<filename>`. Runs Xberg extraction: text-based formats → saves `<filename>.md`; images/scanned PDF → if OCR enabled, saves OCR output as `<filename>.md`. Agent never touches filesystem — all done programmatically. Returns extracted text. |
 | `read_resource(path)` | Agent needs a resource | Reads companion `.md` if present (e.g. `resume.md` alongside `resume.pdf`). Falls back to original file. Xberg handles format detection — agent receives clean text regardless of source format. |
 | `read_session(sessionId)` | Agent needs exact transcript, not the synthesized version | Reads `journal/YYYY-MM-DD-<sessionId>.md`. Used when extraction might have missed nuance. |

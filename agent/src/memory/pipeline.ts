@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { LanguageModelV1 } from "ai";
 import type { PokaicoDb } from "../db/client";
 import { readSession } from "./journal";
-import { readTopic, updateTopic, regenerateIndex, parseIndex } from "./topics";
+import { readTopic, updateTopic, regenerateIndex, parseIndex, FOUNDATIONAL_TOPIC_IDS } from "./topics";
 import { hasNewMessages, updatePointer } from "./guards";
 import { summarize as defaultSummarize } from "./summarizer";
 import { refreshFoundational as defaultRefresh } from "./foundational";
@@ -54,7 +54,6 @@ type TopicRow = {
   updated_at: number;
 };
 
-export const FOUNDATIONAL_TOPIC_IDS = ["user-profile", "user-background", "user-patterns"];
 const JOURNAL_FILE_RE = /^\d{4}-\d{2}-\d{2}-(.+)\.md$/;
 
 function parseUnixTimestamp(startedAt: string, hhMmSs: string): number {

@@ -6,6 +6,9 @@ import type { PokaicoDb } from "../db/client";
 // to ensure topic IDs are safe for filesystem access.
 export const VALID_TOPIC_RE = /^[a-z0-9][a-z0-9-]{0,80}$/;
 
+// The 3 shipped foundational topics — loaded at every session start.
+export const FOUNDATIONAL_TOPIC_IDS = ["user-profile", "user-background", "user-patterns"];
+
 export type TopicMeta = {
   topicId: string;
   summary: string;

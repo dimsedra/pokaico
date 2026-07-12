@@ -25,7 +25,7 @@ vi.mock("../src/memory/topics", async (importOriginal) => {
 });
 
 import { processSession } from "../src/memory/pipeline";
-import { FOUNDATIONAL_TOPIC_IDS } from "../src/memory/pipeline";
+import { FOUNDATIONAL_TOPIC_IDS } from "../src/memory/topics";
 import { summarize } from "../src/memory/summarizer";
 import { refreshFoundational } from "../src/memory/foundational";
 
