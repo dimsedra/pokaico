@@ -1,5 +1,5 @@
 import { generateText, Output } from "ai";
-import type { LanguageModelV1 } from "ai";
+import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { CompactEdge, CompactResult } from "./types";
 
@@ -37,7 +37,7 @@ export type CompactInput = {
   current: string;
   newInfo: string;
   cap: number;
-  model: LanguageModelV1;
+  model: LanguageModel;
   existingEdges?: CompactEdge[];
 };
 

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import type { LanguageModelV1 } from "ai";
+import type { LanguageModel } from "ai";
 import type { PokaicoDb } from "../db/client";
 import { readSession } from "./journal";
 import { readTopic, updateTopic, regenerateIndex, parseIndex, FOUNDATIONAL_TOPIC_IDS } from "./topics";
@@ -26,12 +26,14 @@ export type CompactFn = (input: {
   current: string;
   newInfo: string;
   cap: number;
+  model?: any;
+  existingEdges?: any[];
 }) => Promise<CompactResult>;
 
 const withSessionLock = createMutex();
 
 export type PipelineDeps = {
-  llm: LanguageModelV1;
+  llm: LanguageModel;
   searchSimilar: (query: string, limit?: number) => Promise<SearchResult[]>;
   indexTopic: (topicId: string, content: string) => Promise<void>;
   db: PokaicoDb;
@@ -62,8 +64,17 @@ function parseUnixTimestamp(startedAt: string, hhMmSs: string): number {
   const datePart = startedAt.substring(0, 10);
   const tzPart = startedAt.slice(19);
   const isoString = `${datePart}T${hhMmSs}${tzPart}`;
-  const ts = new Date(isoString).getTime();
-  return isNaN(ts) ? 0 : ts;
+  let ts = new Date(isoString).getTime();
+  if (isNaN(ts)) return 0;
+
+  // Handle midnight crossing:
+  // If the turn time is earlier than the session start time,
+  // it means it occurred on the next calendar day.
+  const startTs = new Date(startedAt).getTime();
+  if (ts < startTs) {
+    ts += 24 * 60 * 60 * 1000; // Add 1 day (86400000ms)
+  }
+  return ts;
 }
 
 function getLatestUnixTimestamp(filePath: string): number {

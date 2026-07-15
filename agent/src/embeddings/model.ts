@@ -13,6 +13,7 @@ export type EmbeddingModel = {
   embed(text: string): Promise<Float32Array>;
   embedBatch(texts: string[]): Promise<Float32Array[]>;
   close(): Promise<void>;
+  isReady?: () => boolean;
 };
 
 export type EmbeddingModelOptions = {
@@ -58,6 +59,11 @@ export function createPythonEmbeddingModel(
     readyReject = reject;
   });
 
+  let isReadyState = false;
+  readyPromise.then(() => {
+    isReadyState = true;
+  }).catch(() => {});
+
   function spawnProc(): void {
     proc = spawn(python, [script], {
       stdio: ["pipe", "pipe", "inherit"],
@@ -92,14 +98,15 @@ export function createPythonEmbeddingModel(
     });
 
     proc.on("error", (err) => {
+      console.error("[pokaico-embedding] process error:", err);
       exited = true;
       exitResolve?.();
-      readyReject?.(new Error(`Python process error: ${err.message}`));
+      readyReject?.(err);
       readyReject = null;
       readyResolve = null;
-      for (const [, entry] of pending) {
+      for (const entry of pending.values()) {
         clearTimeout(entry.timer);
-        entry.reject(new Error(`Python process error: ${err.message}`));
+        entry.reject(err);
       }
       pending.clear();
     });
@@ -107,13 +114,13 @@ export function createPythonEmbeddingModel(
     proc.on("exit", (code) => {
       exited = true;
       exitResolve?.();
-      // Resolve ready so sendRequest can check exited flag
-      readyResolve?.();
-      readyResolve = null;
+      const err = new Error(`Python process exited with code ${code}`);
+      readyReject?.(err);
       readyReject = null;
-      for (const [, entry] of pending) {
+      readyResolve = null;
+      for (const entry of pending.values()) {
         clearTimeout(entry.timer);
-        entry.reject(new Error(`Python process exited with code ${code}`));
+        entry.reject(err);
       }
       pending.clear();
     });
@@ -130,7 +137,12 @@ export function createPythonEmbeddingModel(
   // Clear the ready timer once ready; suppress readyPromise rejection if timer fires
   void readyPromise.finally(() => clearTimeout(readyTimer)).catch(() => undefined);
 
-  spawnProc();
+  try {
+    spawnProc();
+  } catch (err) {
+    exited = true;
+    console.error("[pokaico-embedding] spawn failed:", err);
+  }
 
   function sendRequest(type: "embed" | "embed_batch", payload: Record<string, unknown>): Promise<unknown> {
     if (exited) {
@@ -171,5 +183,5 @@ export function createPythonEmbeddingModel(
     }
   }
 
-  return { embed, embedBatch, close };
+  return { embed, embedBatch, close, isReady: () => isReadyState && !exited && !closed };
 }

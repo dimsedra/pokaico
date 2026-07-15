@@ -1,5 +1,5 @@
 import { generateText, Output } from "ai";
-import type { LanguageModelV1 } from "ai";
+import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { JournalTurn } from "./journal";
 import type { SummaryOutput } from "./types";
@@ -28,7 +28,7 @@ const summarySchema = z.object({
 
 export async function summarize(
   turns: JournalTurn[],
-  model: LanguageModelV1,
+  model: LanguageModel,
 ): Promise<SummaryOutput> {
   if (turns.length === 0) {
     throw new Error("Cannot summarize empty conversation");

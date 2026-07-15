@@ -1,5 +1,5 @@
 import { generateText, Output } from "ai";
-import type { LanguageModelV1 } from "ai";
+import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { FoundationalUpdate, SummaryOutput } from "./types";
 
@@ -28,7 +28,7 @@ const SESSION_ID_RE = /^[\w][\w-]{0,80}$/;
 
 function dedupSessionTags(content: string): string {
   return content.replace(/\[session:([^\]]+)\]/g, (_match, inside) => {
-    const ids = inside.split(",").map((s) => s.trim()).filter(Boolean);
+    const ids = inside.split(",").map((s: string) => s.trim()).filter(Boolean);
     const seen = new Set<string>();
     const deduped: string[] = [];
     for (const id of ids) {
@@ -42,7 +42,7 @@ function dedupSessionTags(content: string): string {
 export async function refreshFoundational(
   summary: SummaryOutput,
   foundationalTopics: FoundationalTopic[],
-  model: LanguageModelV1,
+  model: LanguageModel,
   sessionId?: string,
 ): Promise<FoundationalUpdate[]> {
   if (foundationalTopics.length === 0) return [];
