@@ -23,7 +23,7 @@
     "@ai-sdk/xai": "^4.0.10",
     "@mastra/core": "^1.50.1",
     "@opencode-ai/models": "^0.0.6",
-    "@xberg-io/xberg": "^0.0.1",
+    "@xberg-io/xberg": "^1.0.0-rc.25",
     "ai": "^7.0.18",
     "better-sqlite3": "^12.11.1",
     "mastra": "^1.18.2",

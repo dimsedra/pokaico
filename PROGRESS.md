@@ -176,8 +176,8 @@ Tracking issues:
 - [x] **Task 5 — `list_topics`** ([#16](https://github.com/dimsedra/pokaico/issues/16)) (`agent/src/mastra/tools/list-topics.ts`): daftar topik dari filesystem, filter foundational/all
 - [x] **Task 6 — `read_session`** ([#17](https://github.com/dimsedra/pokaico/issues/17)) (`agent/src/mastra/tools/read-session.ts`): baca journal transcript
 - [x] **Task 7 — `search_topics`** ([#18](https://github.com/dimsedra/pokaico/issues/18)) (`agent/src/mastra/tools/search-topics.ts`): INDEX-primary route → FTS5/vector fallback
-- [ ] **Task 8 — `read_resource`** ([#19](https://github.com/dimsedra/pokaico/issues/19)) (`agent/src/mastra/tools/read-resource.ts`): baca resource file dari disk
-- [ ] **Task 9 — `ingest_resource`** ([#20](https://github.com/dimsedra/pokaico/issues/20)) (`agent/src/mastra/tools/ingest-resource.ts`): copy file + Xberg extraction + graph edge link
+- [x] **Task 8 — `read_resource`** ([#19](https://github.com/dimsedra/pokaico/issues/19)) (`agent/src/mastra/tools/read-resource.ts`): baca resource file dari disk (companion-`.md` first → Xberg fallback, read-only, traversal-safe)
+- [x] **Task 9 — `ingest_resource`** ([#20](https://github.com/dimsedra/pokaico/issues/20)) (`agent/src/mastra/tools/ingest-resource.ts`): copy file + Xberg extraction + graph edge link. **Xberg RESOLVED**: real `@xberg-io/xberg@1.0.0-rc.25` (npm `next` tag, NAPI-RS native binding) di-install; `createXbergExtractor` di `agent/src/extract/xberg.ts` sekarang memanggil Xberg asli (`extract(extractInputFromUri(path), config)`, OCR off by default per SPEC §11, opt-in `ocr:true`). Smoke-tested: ekstrak teks dari file.
 
 ### Group C — Assembly & IPC
 - [ ] **Task 10 — Chat assembly** (modify `agent/src/index.ts`): import agent factory + semua tool → agent beneran. Tambah **stdin/stdout JSON-line listener** (Tauri IPC protocol). HTTP `/health` tetap untuk dev.
