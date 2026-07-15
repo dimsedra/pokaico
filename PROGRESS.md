@@ -147,18 +147,18 @@ Tracking issues:
 
 ---
 
-### Reopened — Cross-topic edges: LLM-judged relatedTo [#8](https://github.com/dimsedra/pokaico/issues/8)
+### Reopened — Cross-topic edges: LLM-judged relatedTo [#8](https://github.com/dimsedra/pokaico/issues/8) [✅]
 
-**Reason:** `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topik dalam satu sesi, padahal user bisa context switch. Edges harus diputuskan oleh LLM:
+Reason: `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topik dalam satu sesi, padahal user bisa context switch. Edges harus diputuskan oleh LLM:
 
-- [ ] `types.ts` — tambah field `relatedTo: [{topic: string, reason: string}]` di segment output
-- [ ] `summarizer.ts` — LLM output `relatedTo` (dengan reason)
-- [ ] `edges.ts` — hapus/ubah `linkCoOccurring`
-- [ ] `pipeline.ts` — step 6b pakai `relatedTo`, bukan `linkCoOccurring`
-- [ ] `topics.ts` — `regenerateIndex()` hapus `## Edges` dari INDEX.md (INDEX murni topic list)
-- [ ] Write phase — append `## Related` ke CONTEXT.md (dengan short desc)
-- [ ] `SPEC.md` — sinkronisasi desain
-- [ ] Tests — update semua test yang bergantung pada edges
+- [x] `types.ts` — tambah field `relatedTo: [{topic: string, reason: string}]` di segment output
+- [x] `summarizer.ts` — LLM output `relatedTo` (dengan reason)
+- [x] `edges.ts` — hapus/ubah `linkCoOccurring`
+- [x] `pipeline.ts` — step 6b pakai `relatedTo`, bukan `linkCoOccurring`
+- [x] `topics.ts` — `regenerateIndex()` hapus `## Edges` dari INDEX.md (INDEX murni topic list)
+- [x] Write phase — append `## Related` ke CONTEXT.md (dengan short desc)
+- [x] `SPEC.md` — sinkronisasi desain
+- [x] Tests — update semua test yang bergantung pada edges
 
 **Urutan task (sequential, no backtrack):**
 
