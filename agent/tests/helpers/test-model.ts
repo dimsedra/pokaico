@@ -68,7 +68,7 @@ export function resolveTestModel(): LanguageModel {
   if (providerId === "opencode-go") {
     const provider = createOpenAICompatible({
       name: "opencode-go",
-      baseURL: "https://api.opencode.ai/v1",
+      baseURL: "https://opencode.ai/zen/go/v1",
       apiKey: process.env.OPENCODE_API_KEY!,
     });
     return provider(modelName);
@@ -77,7 +77,7 @@ export function resolveTestModel(): LanguageModel {
   if (providerId === "opencode-zen") {
     const provider = createOpenAICompatible({
       name: "opencode-zen",
-      baseURL: "https://api.opencode.ai/v1",
+      baseURL: "https://opencode.ai/zen/v1",
       apiKey: process.env.OPENCODE_API_KEY!,
     });
     return provider(modelName);

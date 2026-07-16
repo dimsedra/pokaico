@@ -43,6 +43,20 @@ export async function summarize(
     output: Output.object({ schema: summarySchema }),
     prompt: `Summarize this conversation transcript. Identify distinct topic segments if the conversation covers multiple different subjects. For each segment, provide a short title and specific summary.
 
+Respond with a JSON object in this exact format:
+{
+  "summary": "A concise 2-3 sentence summary of the entire conversation.",
+  "keyPoints": ["Key fact or insight 1", "Key fact or insight 2"],
+  "topics": [
+    {
+      "title": "topic-title",
+      "summary": "1-2 sentence summary specific to this topic segment",
+      "keyPoints": ["Key fact specific to this topic"],
+      "relatedTo": []
+    }
+  ]
+}
+
 Transcript:
 ${transcript}`,
   });

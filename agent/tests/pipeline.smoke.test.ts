@@ -77,7 +77,7 @@ Small team of 4 people, very supportive. I've worked with them for 2 years so I 
     expect(result.summary!.summary).toBeTruthy();
     expect(result.summary!.keyPoints.length).toBeGreaterThan(0);
     expect(result.summary!.summary.length).toBeGreaterThan(10);
-  }, 30_000);
+  }, 120_000);
 
   it("extracts a topic from real conversation", async () => {
     const sessionId = "smoke-extract";

@@ -8,6 +8,7 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     environment: "node",
     env: {
+      OPENCODE_API_KEY: process.env.OPENCODE_API_KEY || "",
       GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY || "",
       TEST_MODEL: process.env.TEST_MODEL || "",
     },
