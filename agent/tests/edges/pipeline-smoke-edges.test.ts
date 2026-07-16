@@ -10,15 +10,18 @@ const hasApiKey = !!process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 describe.runIf(hasApiKey)("E4: 200+ turn conversation with real Gemini", () => {
   let db: PokaicoDb;
   let dir: string;
-  let journalDir: string;
+  let conversationDir: string;
+  let diaryDir: string;
   let memoryDir: string;
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "edge-e4-"));
     db = createDb(join(dir, "test.db"));
-    journalDir = join(dir, "journal");
+    conversationDir = join(dir, "conversation");
+    diaryDir = join(dir, "diary");
     memoryDir = join(dir, "memory");
-    mkdirSync(journalDir, { recursive: true });
+    mkdirSync(conversationDir, { recursive: true });
+    mkdirSync(diaryDir, { recursive: true });
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
   });
 
@@ -31,7 +34,6 @@ describe.runIf(hasApiKey)("E4: 200+ turn conversation with real Gemini", () => {
     const sessionId = "long-convo";
     const startedAt = "2026-07-09T14:00:00+07:00";
 
-    // Generate 200 turns alternating User/Pokai
     const turns: Array<{ ts: string; role: string; content: string }> = [];
     for (let i = 0; i < 100; i++) {
       const ts = new Date(0);
@@ -53,11 +55,10 @@ describe.runIf(hasApiKey)("E4: 200+ turn conversation with real Gemini", () => {
       });
     }
 
-    // Build journal file
     const turnLines = turns.map((t) => `## [${t.ts}] ${t.role}\n${t.content}`).join("\n\n");
-    const journalPath = join(journalDir, `2026-07-09-${sessionId}.md`);
+    const conversationPath = join(conversationDir, `2026-07-09-${sessionId}.md`);
     writeFileSync(
-      journalPath,
+      conversationPath,
       `---
 session_id: ${sessionId}
 started_at: ${startedAt}
@@ -82,14 +83,13 @@ ${turnLines}
       indexTopic,
       db,
       memoryDir,
-      journalDir,
+      conversationDir,
+      diaryDir,
     });
     const elapsed = Date.now() - start;
 
     console.log(`E4 200 turns, elapsed: ${elapsed}ms, error: ${result.error ?? "none"}`);
 
-    // The pipeline must handle a very long conversation without crashing —
-    // either producing a summary or gracefully reporting an error (not throwing).
     expect(result.hasNewMessages).toBe(true);
     if (!result.error) {
       expect(result.summary).toBeTruthy();
@@ -97,6 +97,6 @@ ${turnLines}
   }, 120_000);
 });
 
-describe.skipIf(!hasApiKey)("E4 (skipped — no API key)", () => {
+describe.skipIf(hasApiKey)("E4 (skipped — no API key)", () => {
   it("placeholder", () => {});
 });

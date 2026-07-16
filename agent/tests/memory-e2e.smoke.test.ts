@@ -16,7 +16,8 @@ const hasApiKey = !!process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 describe.runIf(hasApiKey)("memory E2E smoke (real Gemini + E5)", () => {
   let db: PokaicoDb;
   let dir: string;
-  let journalDir: string;
+  let conversationDir: string;
+  let diaryDir: string;
   let memoryDir: string;
   let embeddingService: ReturnType<typeof createEmbeddingService>;
   let capturedTopicIds: string[] = [];
@@ -24,9 +25,11 @@ describe.runIf(hasApiKey)("memory E2E smoke (real Gemini + E5)", () => {
   beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), "memory-e2e-"));
     db = createDb(join(dir, "test.db"));
-    journalDir = join(dir, "journal");
+    conversationDir = join(dir, "conversation");
+    diaryDir = join(dir, "diary");
     memoryDir = join(dir, "memory");
-    mkdirSync(journalDir, { recursive: true });
+    mkdirSync(conversationDir, { recursive: true });
+    mkdirSync(diaryDir, { recursive: true });
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
 
     const embeddingModel = createPythonEmbeddingModel({ timeoutMs: 120_000 });
@@ -40,8 +43,8 @@ describe.runIf(hasApiKey)("memory E2E smoke (real Gemini + E5)", () => {
 
   it("Test 1: saves 2 distinct topics from 1 multi-subject session", async () => {
     const sessionId = "multi-subject-session";
-    const journalPath = join(journalDir, `2026-07-11-${sessionId}.md`);
-    writeFileSync(journalPath, `---
+    const conversationPath = join(conversationDir, `2026-07-11-${sessionId}.md`);
+    writeFileSync(conversationPath, `---
 session_id: ${sessionId}
 started_at: 2026-07-11T14:00:00+07:00
 model: test-model
@@ -77,7 +80,8 @@ Practice makes perfect. Keep feeding that starter!
       indexTopic: embeddingService.indexTopic,
       db,
       memoryDir,
-      journalDir,
+      conversationDir,
+      diaryDir,
     });
 
     console.log("E2E Test 1 result:");
@@ -112,7 +116,6 @@ Practice makes perfect. Keep feeding that starter!
   it("Test 2: retrieves relevant topic via searchSimilar (new chat)", async () => {
     expect(capturedTopicIds.length).toBeGreaterThanOrEqual(1);
 
-    // Use single-word queries to avoid FTS5 AND semantics
     const cyclingResults = await embeddingService.searchSimilar("cycling", 5);
     console.log("\nE2E Test 2 - cycling search:", cyclingResults.map((r) => `${r.topicId} (${r.score.toFixed(3)})`));
 
@@ -124,7 +127,6 @@ Practice makes perfect. Keep feeding that starter!
       expect(found).toBeTruthy();
       console.log(`  Cycling topic [${cyclingTopic}] FOUND with score ${found!.score.toFixed(3)}`);
     } else {
-      // Topic might have unexpected slug — just verify search returned something
       expect(cyclingResults.length).toBeGreaterThan(0);
       console.log(`  No cycling topic matched captured IDs. Top result: ${cyclingResults[0]?.topicId ?? "none"}`);
     }
@@ -150,8 +152,8 @@ Practice makes perfect. Keep feeding that starter!
     expect(existingId).toBeTruthy();
 
     const sessionId = "follow-up-session";
-    const journalPath = join(journalDir, `2026-07-12-${sessionId}.md`);
-    writeFileSync(journalPath, `---
+    const conversationPath = join(conversationDir, `2026-07-12-${sessionId}.md`);
+    writeFileSync(conversationPath, `---
 session_id: ${sessionId}
 started_at: 2026-07-12T10:00:00+07:00
 model: test-model
@@ -181,7 +183,8 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
       indexTopic: embeddingService.indexTopic,
       db,
       memoryDir,
-      journalDir,
+      conversationDir,
+      diaryDir,
     });
 
     console.log("\nE2E Test 3 - follow-up session:");
@@ -195,27 +198,17 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     expect(result.error).toBeUndefined();
 
     const updates = result.changes.filter((c) => c.action === "update");
-    const creates = result.changes.filter((c) => c.action === "create");
 
-    // Acceptance (issue #2 Test 3): a follow-up session about an existing
-    // topic must not crash and should produce updates (foundational or otherwise).
-    // NOTE: the exact topicId updated depends on LLM title generation and may not
-    // match the original session's topic deterministically (e.g. "bike purchase" vs
-    // "commuting via cycling"). Deterministic routing is verified in the offline
-    // pipeline-level test; this smoke test checks integration health.
     expect(updates.length).toBeGreaterThan(0);
 
-    // Prior topics must still exist on disk (no accidental deletion).
     expect(
       readFileSync(join(memoryDir, "topics", existingId, "CONTEXT.md"), "utf-8").length,
     ).toBeGreaterThan(0);
     const allDirs = readdirSync(join(memoryDir, "topics"));
     expect(allDirs).toContain(existingId);
-    // All created topics survive (use captured IDs, not hardcoded slugs).
     for (const id of capturedTopicIds) {
       expect(allDirs).toContain(id);
     }
-    // The existing cycling topic content should be unchanged or grown (not erased).
     const cyclingContent = readFileSync(
       join(memoryDir, "topics", existingId, "CONTEXT.md"),
       "utf-8",
@@ -247,7 +240,6 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     console.log("  output tokens:", contextTokens, "(cap", cap + ")");
     console.log("  overflow files:", result.overflow.length);
 
-    // Compacted context must be far smaller than input and near/under the cap.
     expect(contextTokens).toBeLessThan(countTokens(current));
     expect(contextTokens).toBeLessThanOrEqual(cap * 1.3);
     expect(result.context.length).toBeGreaterThan(0);
@@ -265,19 +257,14 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     expect(cyclingTopic).toBeTruthy();
     expect(bakingTopic).toBeTruthy();
 
-    // === 5a — INDEX-primary routing (path gembira) ===
-    // Query dengan kata pertama dari topic slug yang sudah diketahui — ini
-    // menjamin lexical match apapun slug yang dihasilkan LLM.
     const queryToken = cyclingTopic.split("-")[0];
     const searchSpy = vi.fn(async () => []);
     const ctx = await retrieveMemory(memoryDir, queryToken, {
       searchSimilar: searchSpy,
     });
 
-    // CONTEXT.md dari filesystem ter-load (bukan FTS5/similarity)
     expect(ctx).toContain(`# ${cyclingTopic}`);
     expect(ctx).toContain(cyclingTopic.split("-")[0]);
-    // INDEX hit → searchSimilar tidak pernah dipanggil
     expect(searchSpy).not.toHaveBeenCalled();
 
     console.log("\nE2E Test 5a — INDEX-primary routing:");
@@ -285,19 +272,16 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     console.log(`  searchSimilar called: ${searchSpy.mock.calls.length}`);
     console.log(`  context length: ${ctx.length} chars`);
 
-    // === 5b — Fallback saat INDEX miss ===
     const fallbackSpy = vi.fn(async () => []);
     const miss = await retrieveMemory(memoryDir, "quantum physics", {
       searchSimilar: fallbackSpy,
     });
-    // INDEX kosong → fallback embedding dipanggil
     expect(fallbackSpy).toHaveBeenCalledOnce();
 
     console.log("\nE2E Test 5b — INDEX miss → fallback:");
     console.log(`  query: "quantum physics" → no INDEX match`);
     console.log(`  searchSimilar called: ${fallbackSpy.mock.calls.length}`);
 
-    // === 5c — Graph edges terverifikasi di SQLite (jika LLM menentukan related) ===
     const edges = db.prepare(
       "SELECT from_topic, to_topic, relationship FROM edges ORDER BY from_topic",
     ).all() as { from_topic: string; to_topic: string; relationship: string }[];
@@ -314,11 +298,9 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
         console.log(`  ${e.from_topic} → ${e.to_topic}: ${e.relationship}`);
       }
     } else {
-      // No edges means LLM determined these topics are unrelated (context switch) — valid.
       console.log("  (no edges — topics determined unrelated by LLM)");
     }
 
-    // === 5d — INDEX.md berisi node list + edge section ===
     const indexMd = readFileSync(join(memoryDir, "INDEX.md"), "utf-8");
     expect(indexMd).toContain(cyclingTopic);
     expect(indexMd).toContain(bakingTopic);
@@ -328,4 +310,8 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     console.log(`  topics in INDEX: ${indexMd.split("- **").length - 1}`);
     console.log(`  edges section: not present (edges live in DB + CONTEXT.md ## Related)`);
   }, 30_000);
+});
+
+describe.skipIf(hasApiKey)("E2E (skipped — no API key)", () => {
+  it("placeholder", () => {});
 });

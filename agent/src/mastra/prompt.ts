@@ -1,6 +1,5 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import { readSessionAsync, type JournalTurn, type JournalSession } from "../memory/journal";
 
 // Static Pokai system instructions (<500 tokens)
 export const STATIC_SYSTEM_PROMPT = `You are Pokai, a helpful, friendly, and highly capable agentic assistant.
@@ -16,21 +15,22 @@ Guidelines:
 export async function buildPrompt(
   memoryDir: string,
   _query?: string,
-  journalDir?: string
+  conversationDir?: string,
+  diaryDir?: string
 ): Promise<string> {
   const indexMdPath = join(memoryDir, "INDEX.md");
   const userProfilePath = join(memoryDir, "topics", "user-profile", "CONTEXT.md");
   const userBackgroundPath = join(memoryDir, "topics", "user-background", "CONTEXT.md");
   const userPatternsPath = join(memoryDir, "topics", "user-patterns", "CONTEXT.md");
-  const resolvedJournalDir = journalDir || join(dirname(memoryDir), "journal");
+  const resolvedDiaryDir = diaryDir || join(dirname(memoryDir), "diary");
 
   // Read memory files in parallel
-  const [indexContent, userProfile, userBackground, userPatterns, recentHistory] = await Promise.all([
+  const [indexContent, userProfile, userBackground, userPatterns, recentDiaries] = await Promise.all([
     readFileSafely(indexMdPath, ""),
     readFileSafely(userProfilePath, "(No profile information recorded yet.)"),
     readFileSafely(userBackgroundPath, "(No background information recorded yet.)"),
     readFileSafely(userPatternsPath, "(No recurring patterns detected yet.)"),
-    readRecentHistory(resolvedJournalDir)
+    readRecentDiaries(resolvedDiaryDir)
   ]);
 
   let prompt = `${STATIC_SYSTEM_PROMPT}\n`;
@@ -43,8 +43,8 @@ export async function buildPrompt(
   prompt += `## User Background\n${userBackground}\n\n`;
   prompt += `## User Patterns\n${userPatterns}\n\n`;
 
-  if (recentHistory) {
-    prompt += `## Recent Conversation History\nUse this history for context and continuity across recent sessions.\n${recentHistory}\n\n`;
+  if (recentDiaries) {
+    prompt += `## Companion's Diary / Recent Context\nUse these recent diary entries to understand the context of recent conversations.\n${recentDiaries}\n\n`;
   }
 
   return prompt;
@@ -58,10 +58,51 @@ async function readFileSafely(filePath: string, fallback: string): Promise<strin
   }
 }
 
-async function readRecentHistory(journalDir: string): Promise<string> {
+interface DiaryEntry {
+  sessionId: string;
+  startedAt: string;
+  lastActiveAt: string;
+  content: string;
+}
+
+async function readDiaryFile(filePath: string): Promise<DiaryEntry> {
+  const raw = await readFile(filePath, "utf-8");
+  const cleanRaw = raw.replace(/^\uFEFF/, "").trimStart();
+  const normalized = cleanRaw.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+
+  if (lines.length < 2 || lines[0] !== "---") {
+    throw new Error("missing frontmatter");
+  }
+  const fmEnd = lines.indexOf("---", 1);
+  if (fmEnd === -1) {
+    throw new Error("unclosed frontmatter");
+  }
+
+  const fm: Record<string, string> = {};
+  for (let i = 1; i < fmEnd; i++) {
+    const line = lines[i].split("#")[0].trim();
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const value = line.slice(colonIdx + 1).trim();
+    fm[key] = value;
+  }
+
+  const content = lines.slice(fmEnd + 1).join("\n").trim();
+
+  return {
+    sessionId: fm["session_id"] || "",
+    startedAt: fm["started_at"] || "",
+    lastActiveAt: fm["last_active_at"] || fm["started_at"] || "",
+    content,
+  };
+}
+
+async function readRecentDiaries(diaryDir: string): Promise<string> {
   let files: string[] = [];
   try {
-    files = await readdir(journalDir);
+    files = await readdir(diaryDir);
   } catch {
     return "";
   }
@@ -75,56 +116,44 @@ async function readRecentHistory(journalDir: string): Promise<string> {
   const topFiles = mdFiles.slice(0, 10);
 
   // Parallel asynchronous read/parse
-  const sessionPromises = topFiles.map(async (file) => {
+  const diaryPromises = topFiles.map(async (file) => {
     try {
-      return await readSessionAsync(join(journalDir, file));
-    } catch (err) {
-      console.warn(`[pokaico] Failed to parse journal file ${file}:`, err);
+      return await readDiaryFile(join(diaryDir, file));
+    } catch {
       return null;
     }
   });
 
-  const sessions = (await Promise.all(sessionPromises)).filter(
-    (s): s is JournalSession => s !== null
+  const entries = (await Promise.all(diaryPromises)).filter(
+    (e): e is DiaryEntry => e !== null
   );
 
-  if (sessions.length === 0) return "";
+  if (entries.length === 0) return "";
 
-  // Sort sessions chronologically by startedAt frontmatter descending (tie-breaker: sessionId)
-  sessions.sort((a, b) => {
-    const timeA = new Date(a.startedAt).getTime() || 0;
-    const timeB = new Date(b.startedAt).getTime() || 0;
+  // Sort diaries descending by last_active_at (newest first)
+  entries.sort((a, b) => {
+    const timeA = new Date(a.lastActiveAt).getTime() || 0;
+    const timeB = new Date(b.lastActiveAt).getTime() || 0;
     if (timeB !== timeA) {
       return timeB - timeA;
     }
     return b.sessionId.localeCompare(a.sessionId);
   });
 
-  const chunks: JournalTurn[][] = [];
-  let accumulatedCount = 0;
+  // Take top 3 most recently active
+  const topDiaries = entries.slice(0, 3);
 
-  for (const session of sessions) {
-    if (session.turns && session.turns.length > 0) {
-      const needed = 10 - accumulatedCount;
-      if (needed <= 0) break;
+  // Reverse to display oldest first (chronological order)
+  topDiaries.reverse();
 
-      const chunk = session.turns.slice(-needed);
-      chunks.push(chunk);
-      accumulatedCount += chunk.length;
-
-      if (accumulatedCount >= 10) break;
-    }
-  }
-
-  // Reverse chunks to put older sessions first, then flatten
-  const finalTurns = chunks.reverse().flat();
-  if (finalTurns.length === 0) return "";
-
-  return finalTurns
-    .map((turn) => {
-      const label = turn.role === "user" ? "User" : turn.role === "pokai" ? "Pokai" : turn.toolName ? `Tool (${turn.toolName.trim()})` : "Tool";
-      const formattedContent = turn.content.trim().replace(/\n/g, "\n  ");
-      return `- [${turn.timestamp}] ${label}: ${formattedContent}`;
+  return topDiaries
+    .map((entry) => {
+      const dateStr = new Date(entry.lastActiveAt).toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      return `### Entry from ${dateStr}\n${entry.content}`;
     })
-    .join("\n");
+    .join("\n\n");
 }

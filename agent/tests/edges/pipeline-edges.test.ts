@@ -1,8 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createDb, closeDb, type PokaicoDb } from "../../src/db/client";
+
+vi.mock("ai", () => ({
+  generateText: vi.fn().mockResolvedValue({ text: "Mocked companion diary entry" }),
+}));
 
 vi.mock("../../src/memory/summarizer", () => ({
   summarize: vi.fn(),
@@ -18,13 +22,13 @@ import { refreshFoundational } from "../../src/memory/foundational";
 const mockSummarize = vi.mocked(summarize);
 const mockRefresh = vi.mocked(refreshFoundational);
 
-function makeJournal(
-  journalDir: string,
+function makeConversation(
+  conversationDir: string,
   sessionId: string,
   startedAt: string,
   turns: Array<{ ts: string; role: string; content: string }>,
 ): string {
-  const path = join(journalDir, `2026-07-09-${sessionId}.md`);
+  const path = join(conversationDir, `2026-07-09-${sessionId}.md`);
   const turnLines = turns
     .map((t) => `## [${t.ts}] ${t.role}\n${t.content}`)
     .join("\n\n");
@@ -46,15 +50,18 @@ ${turnLines}
 describe("E2: started_at changed without new turns", () => {
   let db: PokaicoDb;
   let dir: string;
-  let journalDir: string;
+  let conversationDir: string;
+  let diaryDir: string;
   let memoryDir: string;
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "edge-e2-"));
     db = createDb(join(dir, "test.db"));
-    journalDir = join(dir, "journal");
+    conversationDir = join(dir, "conversation");
+    diaryDir = join(dir, "diary");
     memoryDir = join(dir, "memory");
-    mkdirSync(journalDir, { recursive: true });
+    mkdirSync(conversationDir, { recursive: true });
+    mkdirSync(diaryDir, { recursive: true });
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
   });
 
@@ -71,7 +78,7 @@ describe("E2: started_at changed without new turns", () => {
     const sessionId = "date-change";
     const startedAt1 = "2026-07-09T08:00:00+07:00";
 
-    makeJournal(journalDir, sessionId, startedAt1, [
+    makeConversation(conversationDir, sessionId, startedAt1, [
       { ts: "08:00:00", role: "User", content: "I love python programming." },
       { ts: "08:00:15", role: "Pokai", content: "Python is great!" },
     ]);
@@ -93,7 +100,8 @@ describe("E2: started_at changed without new turns", () => {
       indexTopic,
       db,
       memoryDir,
-      journalDir,
+      conversationDir,
+      diaryDir,
     });
 
     // Verify topic was created
@@ -104,9 +112,9 @@ describe("E2: started_at changed without new turns", () => {
     expect(topicContent1).toContain("User loves Python");
 
     // Now SIMULATE: change started_at from July 9 to July 10 (same turns)
-    // Recreate journal with new date
+    // Recreate conversation with new date
     const startedAt2 = "2026-07-10T08:00:00+07:00";
-    makeJournal(journalDir, sessionId, startedAt2, [
+    makeConversation(conversationDir, sessionId, startedAt2, [
       { ts: "08:00:00", role: "User", content: "I love python programming." },
       { ts: "08:00:15", role: "Pokai", content: "Python is great!" },
     ]);
@@ -124,11 +132,10 @@ describe("E2: started_at changed without new turns", () => {
       indexTopic,
       db,
       memoryDir,
-      journalDir,
+      conversationDir,
+      diaryDir,
     });
 
-    // A changed started_at yields a new latest timestamp, so the guard treats
-    // it as new messages and re-processes.
     expect(result2.hasNewMessages).toBe(true);
 
     // The original topic file must NOT accumulate a duplicate copy of the same fact.
@@ -144,15 +151,18 @@ describe("E2: started_at changed without new turns", () => {
 describe("E5: Rapid double processSession", () => {
   let db: PokaicoDb;
   let dir: string;
-  let journalDir: string;
+  let conversationDir: string;
+  let diaryDir: string;
   let memoryDir: string;
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "edge-e5-"));
     db = createDb(join(dir, "test.db"));
-    journalDir = join(dir, "journal");
+    conversationDir = join(dir, "conversation");
+    diaryDir = join(dir, "diary");
     memoryDir = join(dir, "memory");
-    mkdirSync(journalDir, { recursive: true });
+    mkdirSync(conversationDir, { recursive: true });
+    mkdirSync(diaryDir, { recursive: true });
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
   });
 
@@ -169,7 +179,7 @@ describe("E5: Rapid double processSession", () => {
     const sessionId = "rapid-double";
     const startedAt = "2026-07-09T10:00:00+07:00";
 
-    makeJournal(journalDir, sessionId, startedAt, [
+    makeConversation(conversationDir, sessionId, startedAt, [
       { ts: "10:00:00", role: "User", content: "I work as a graphic designer." },
       { ts: "10:00:10", role: "Pokai", content: "That's creative!" },
     ]);
@@ -184,7 +194,15 @@ describe("E5: Rapid double processSession", () => {
     const indexTopic = vi.fn().mockResolvedValue(undefined);
     const mockLlm = {} as never;
 
-    const deps = { llm: mockLlm, searchSimilar, indexTopic, db, memoryDir, journalDir };
+    const deps = {
+      llm: mockLlm,
+      searchSimilar,
+      indexTopic,
+      db,
+      memoryDir,
+      conversationDir,
+      diaryDir,
+    };
 
     // Fire two calls concurrently — session lock should serialize them
     const [r1, r2] = await Promise.all([
@@ -192,8 +210,6 @@ describe("E5: Rapid double processSession", () => {
       processSession(sessionId, deps),
     ]);
 
-    // The session mutex serializes the two concurrent calls: exactly one does
-    // the work, the second sees no new messages.
     expect(mockSummarize.mock.calls.length).toBe(1);
     expect([r1.hasNewMessages, r2.hasNewMessages].filter(Boolean)).toHaveLength(1);
   });

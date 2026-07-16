@@ -3,7 +3,7 @@ import { Readable, Writable } from "node:stream";
 import { existsSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Agent } from "@mastra/core/agent";
-import { appendTurn, type JournalTurn } from "./memory/journal";
+import { appendTurn, type ConversationTurn } from "./memory/conversation";
 
 export type IPCMessage = {
   id: string;
@@ -12,45 +12,46 @@ export type IPCMessage = {
 };
 
 /**
- * Searches the journal directory for an existing session file.
+ * Searches the conversation directory for an existing session file.
  * Helps prevent session split bugs across midnight calendar transitions.
  */
-export function findJournalFile(journalDir: string, sessionId: string): string | null {
-  if (!existsSync(journalDir)) return null;
+export function findConversationFile(conversationDir: string, sessionId: string): string | null {
+  if (!existsSync(conversationDir)) return null;
   try {
-    const entries = readdirSync(journalDir);
+    const entries = readdirSync(conversationDir);
     // Escape sessionId for regex safety
     const escaped = sessionId.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
     const regex = new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${escaped}\\.md$`);
     for (const entry of entries) {
       if (regex.test(entry)) {
-        return join(journalDir, entry);
+        return join(conversationDir, entry);
       }
     }
   } catch (err) {
-    console.error("[pokaico-agent] findJournalFile failed:", err);
+    console.error("[pokaico-agent] findConversationFile failed:", err);
   }
   return null;
 }
 
-export function createJournalSessionFile(
-  journalDir: string,
+export function createConversationSessionFile(
+  conversationDir: string,
   sessionId: string,
   modelName: string,
 ): string {
-  const existing = findJournalFile(journalDir, sessionId);
+  const existing = findConversationFile(conversationDir, sessionId);
   if (existing) {
     return existing;
   }
 
   const dateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
   const filename = `${dateStr}-${sessionId}.md`;
-  const filePath = join(journalDir, filename);
+  const filePath = join(conversationDir, filename);
 
   const startedAt = new Date().toISOString();
   const frontmatter = `---
 session_id: ${sessionId}
 started_at: ${startedAt}
+last_active_at: ${startedAt}
 model: ${modelName}
 extracted: false
 ---
@@ -63,11 +64,11 @@ export function startIPCListener(deps: {
   stdin: Readable;
   stdout: Writable;
   getAgent: () => Agent | null;
-  journalDir: string;
+  conversationDir: string;
   runPipeline: (sessionId: string) => Promise<any>;
   getModelName: () => string;
 }) {
-  const { stdin, stdout, getAgent, journalDir, runPipeline, getModelName } = deps;
+  const { stdin, stdout, getAgent, conversationDir, runPipeline, getModelName } = deps;
   const rl = createInterface({
     input: stdin,
     output: undefined,
@@ -105,7 +106,7 @@ export function startIPCListener(deps: {
           JSON.stringify({
             id: msgId,
             success: false,
-            error: `Unsupported command: "${msg.command}"`,
+            error: `Unknown command: ${msg.command}`,
           }) + "\n"
         );
         return;
@@ -135,12 +136,12 @@ export function startIPCListener(deps: {
         return;
       }
 
-      // 1. Create/Ensure journal file exists
-      const filePath = createJournalSessionFile(journalDir, sessionId, getModelName());
+      // 1. Create/Ensure conversation file exists
+      const filePath = createConversationSessionFile(conversationDir, sessionId, getModelName());
 
       // 2. Append User turn (use UTC HH:mm:ss to prevent timezone discrepancies)
       const userTimestamp = new Date().toISOString().slice(11, 19);
-      const userTurn: JournalTurn = {
+      const userTurn: ConversationTurn = {
         timestamp: userTimestamp,
         role: "user",
         content: message,
@@ -181,7 +182,7 @@ export function startIPCListener(deps: {
                   : String(rawResult);
 
               const toolTimestamp = new Date().toISOString().slice(11, 19);
-              const toolTurn: JournalTurn = {
+              const toolTurn: ConversationTurn = {
                 timestamp: toolTimestamp,
                 role: "tool",
                 toolName: tc.toolName,
@@ -196,7 +197,7 @@ export function startIPCListener(deps: {
       // 5. Append Assistant (Pokai) turn
       const agentResponseText = result.text || "";
       const agentTimestamp = new Date().toISOString().slice(11, 19);
-      const agentTurn: JournalTurn = {
+      const agentTurn: ConversationTurn = {
         timestamp: agentTimestamp,
         role: "pokai",
         content: agentResponseText,
@@ -219,20 +220,16 @@ export function startIPCListener(deps: {
         console.error(`[pokaico-agent] Background pipeline error:`, err);
       });
 
-    } catch (err) {
+    } catch (outerErr) {
       stdout.write(
         JSON.stringify({
           id: msgId,
           success: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: "Fatal listener error: " + (outerErr instanceof Error ? outerErr.message : String(outerErr)),
         }) + "\n"
       );
     }
   });
 
-  return {
-    close: () => {
-      rl.close();
-    },
-  };
+  return rl;
 }

@@ -1,8 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createDb, closeDb, type PokaicoDb } from "../../src/db/client";
+
+vi.mock("ai", () => ({
+  generateText: vi.fn().mockResolvedValue({ text: "Mocked companion diary entry" }),
+}));
 
 vi.mock("../../src/memory/summarizer", () => ({
   summarize: vi.fn(),
@@ -11,7 +15,6 @@ vi.mock("../../src/memory/foundational", () => ({
   refreshFoundational: vi.fn(),
 }));
 
-// Mock guards to simulate DB failure
 vi.mock("../../src/memory/guards", async () => {
   const actual = await vi.importActual("../../src/memory/guards");
   return {
@@ -32,15 +35,18 @@ const mockUpdatePointer = vi.mocked(updatePointer);
 describe("E7: Pointer update failure after journal mark", () => {
   let db: PokaicoDb;
   let dir: string;
-  let journalDir: string;
+  let conversationDir: string;
+  let diaryDir: string;
   let memoryDir: string;
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "edge-e7-"));
     db = createDb(join(dir, "test.db"));
-    journalDir = join(dir, "journal");
+    conversationDir = join(dir, "conversation");
+    diaryDir = join(dir, "diary");
     memoryDir = join(dir, "memory");
-    mkdirSync(journalDir, { recursive: true });
+    mkdirSync(conversationDir, { recursive: true });
+    mkdirSync(diaryDir, { recursive: true });
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
   });
 
@@ -53,13 +59,13 @@ describe("E7: Pointer update failure after journal mark", () => {
     vi.clearAllMocks();
   });
 
-  it("does NOT mark journal extracted when pointer update throws (FIXED)", async () => {
+  it("does NOT mark conversation extracted when pointer update throws (FIXED)", async () => {
     const sessionId = "pointer-fail";
     const startedAt = "2026-07-09T12:00:00+07:00";
-    const journalPath = join(journalDir, `2026-07-09-${sessionId}.md`);
+    const conversationPath = join(conversationDir, `2026-07-09-${sessionId}.md`);
 
     writeFileSync(
-      journalPath,
+      conversationPath,
       `---
 session_id: ${sessionId}
 started_at: ${startedAt}
@@ -93,16 +99,14 @@ Response.`,
         indexTopic,
         db,
         memoryDir,
-        journalDir,
+        conversationDir,
+        diaryDir,
       }),
     ).rejects.toThrow();
 
-    // updatePointer (Step 7) runs BEFORE markJournalExtracted (Step 8).
-    // If the pointer write fails, the journal must stay extracted:false so the
-    // session is safely retried on the next run.
-    const journalContent = readFileSync(journalPath, "utf-8");
-    expect(journalContent).toContain("extracted: false");
-    expect(journalContent).not.toContain("extracted: true");
+    const conversationContent = readFileSync(conversationPath, "utf-8");
+    expect(conversationContent).toContain("extracted: false");
+    expect(conversationContent).not.toContain("extracted: true");
   });
 });
 
@@ -130,7 +134,6 @@ describe("E3 v2: Large content updates replace the file (compact-on-update)", ()
     const content = readFileSync(join(mem, "topics", "big-topic", "CONTEXT.md"), "utf-8");
     const resourcesPath = join(mem, "topics", "big-topic", "resources");
 
-    // Each update replaces the file — only the last update survives, no overflow.
     expect(content.startsWith("[src:s30:30]")).toBe(true);
     expect(content).toContain("Update #30:");
     expect(content).not.toContain("Initial topic");

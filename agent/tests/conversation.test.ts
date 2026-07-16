@@ -7,11 +7,11 @@ import {
   appendTurn,
   readSession,
   listSessions,
-  parseJournalContent,
+  parseConversationContent,
   readSessionAsync,
   listSessionsAsync,
-  type JournalTurn,
-} from "../src/memory/journal";
+  type ConversationTurn,
+} from "../src/memory/conversation";
 
 let tmpDir: string;
 
@@ -22,7 +22,7 @@ beforeAll(() => {
 describe("appendTurn", () => {
   it("appends a user turn in the expected markdown format", () => {
     const path = join(tmpDir, "test-session.md");
-    const turn: JournalTurn = {
+    const turn: ConversationTurn = {
       timestamp: "14:02:11",
       role: "user",
       content: "Hello Pokai!",
@@ -336,7 +336,7 @@ describe("edge cases", () => {
   });
 });
 
-describe("parseJournalContent", () => {
+describe("parseConversationContent", () => {
   it("should parse frontmatter and turns from a string correctly", () => {
     const raw = [
       "---",
@@ -350,7 +350,7 @@ describe("parseJournalContent", () => {
       "Hello world!",
     ].join("\n");
 
-    const session = parseJournalContent(raw);
+    const session = parseConversationContent(raw);
     expect(session.sessionId).toBe("parse-str");
     expect(session.model).toBe("gpt-test");
     expect(session.turns).toHaveLength(1);
@@ -358,7 +358,7 @@ describe("parseJournalContent", () => {
   });
 
   it("should throw error if frontmatter is missing", () => {
-    expect(() => parseJournalContent("no frontmatter")).toThrow("missing frontmatter");
+    expect(() => parseConversationContent("no frontmatter")).toThrow("missing frontmatter");
   });
 });
 
@@ -392,7 +392,7 @@ describe("readSessionAsync", () => {
   });
 });
 
-describe("journal - code review fixes", () => {
+describe("conversation - code review fixes", () => {
   it("parses headers with variations in casing and spacing and captures toolName", () => {
     const raw = [
       "---",
@@ -409,7 +409,7 @@ describe("journal - code review fixes", () => {
       "## [14:00:02] Tool:search_topics",
       "result"
     ].join("\n");
-    const session = parseJournalContent(raw);
+    const session = parseConversationContent(raw);
     expect(session.turns).toHaveLength(3);
     expect(session.turns[0].role).toBe("user");
     expect(session.turns[1].role).toBe("pokai");
@@ -419,7 +419,7 @@ describe("journal - code review fixes", () => {
 
   it("handles files containing UTF-8 BOM and leading newlines", () => {
     const raw = "\uFEFF\n\n---\nsession_id: bom-test\nstarted_at: 2026-07-08T10:00:00+07:00\nmodel: m\nextracted: false\n---";
-    expect(() => parseJournalContent(raw)).not.toThrow();
+    expect(() => parseConversationContent(raw)).not.toThrow();
   });
 
   it("strips YAML comments from frontmatter lines during parsing", () => {
@@ -431,7 +431,7 @@ describe("journal - code review fixes", () => {
       "extracted: false",
       "---",
     ].join("\n");
-    const session = parseJournalContent(raw);
+    const session = parseConversationContent(raw);
     expect(session.sessionId).toBe("yaml-comments");
     expect(session.model).toBe("test-model");
   });
@@ -460,7 +460,7 @@ describe("journal - code review fixes", () => {
   it("preserves and appends tool names correctly", () => {
     const path = join(tmpDir, "tool-write-test.md");
     writeFileSync(path, "---\nsession_id: test\nstarted_at: 2026-07-08T14:02:11+07:00\nmodel: test-model\nextracted: false\n---\n");
-    const turn: JournalTurn = {
+    const turn: ConversationTurn = {
       timestamp: "14:03:02",
       role: "tool",
       toolName: "search_topics",

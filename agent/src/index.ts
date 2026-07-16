@@ -160,7 +160,7 @@ export function getAgent(): any {
     search_topics: createSearchTopicsTool({ memoryDir: dataPaths.memoryDir, embedding: embeddingService }),
     read_topic: createReadTopicTool(dataPaths.memoryDir),
     list_topics: createListTopicsTool(dataPaths.memoryDir),
-    read_session: createReadSessionTool(dataPaths.journalDir),
+    read_session: createReadSessionTool(dataPaths.conversationDir),
     read_resource: createReadResourceTool({ memoryDir: dataPaths.memoryDir, extractor: xbergExtractor }),
     ingest_resource: createIngestResourceTool({ memoryDir: dataPaths.memoryDir, db, extractor: xbergExtractor }),
   };
@@ -201,7 +201,8 @@ const runPipeline = async (sessionId: string) => {
     },
     db,
     memoryDir: dataPaths.memoryDir,
-    journalDir: dataPaths.journalDir,
+    conversationDir: dataPaths.conversationDir,
+    diaryDir: dataPaths.diaryDir,
   });
 };
 
@@ -210,7 +211,7 @@ startIPCListener({
   stdin: process.stdin,
   stdout: process.stdout,
   getAgent,
-  journalDir: dataPaths.journalDir,
+  conversationDir: dataPaths.conversationDir,
   runPipeline,
   getModelName: () => activeModelName,
 });

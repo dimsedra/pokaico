@@ -3,7 +3,7 @@ import { Readable, Writable } from "node:stream";
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { startIPCListener, createJournalSessionFile } from "../src/ipc";
+import { startIPCListener, createConversationSessionFile } from "../src/ipc";
 
 class MockReadable extends Readable {
   _read() {}
@@ -37,7 +37,6 @@ class MockWritable extends Writable {
 
   waitForLine(): Promise<void> {
     return new Promise((resolve) => {
-      // If we already have lines, resolve immediately
       if (this.lines.length > 0) {
         resolve();
       } else {
@@ -54,24 +53,26 @@ class MockWritable extends Writable {
 
 describe("startIPCListener", () => {
   let tmpDir: string;
-  let journalDir: string;
-  let activeListeners: { close: () => void }[] = [];
+  let conversationDir: string;
+  let activeListeners: any[] = [];
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "pokaico-ipc-test-"));
-    journalDir = join(tmpDir, "journal");
-    mkdirSync(journalDir);
+    conversationDir = join(tmpDir, "conversation");
+    mkdirSync(conversationDir);
     activeListeners = [];
   });
 
   afterEach(() => {
     for (const listener of activeListeners) {
-      listener.close();
+      if (listener && typeof listener.close === "function") {
+        listener.close();
+      }
     }
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("handles a successful chat command, writes journal turns, and responds to stdout", async () => {
+  it("handles a successful chat command, writes conversation turns, and responds to stdout", async () => {
     const stdin = new MockReadable();
     const stdout = new MockWritable();
     const mockAgent = {
@@ -86,7 +87,7 @@ describe("startIPCListener", () => {
       stdin,
       stdout,
       getAgent: () => mockAgent,
-      journalDir,
+      conversationDir,
       runPipeline,
       getModelName: () => "google/gemini-1.5-flash",
     });
@@ -101,7 +102,6 @@ describe("startIPCListener", () => {
       },
     }));
 
-    // Wait deterministically for line to be written
     await stdout.waitForLine();
 
     expect(stdout.lines).toHaveLength(1);
@@ -110,32 +110,30 @@ describe("startIPCListener", () => {
     expect(resp.success).toBe(true);
     expect(resp.data.response).toBe("Response from Pokai!");
 
-    // Verify journal file was created and contains turns
-    const files = readdirSync(journalDir);
+    const files = readdirSync(conversationDir);
     expect(files).toHaveLength(1);
-    const journalContent = readFileSync(join(journalDir, files[0]), "utf-8");
-    expect(journalContent).toContain("session_id: session-abc");
-    expect(journalContent).toContain("model: google/gemini-1.5-flash");
-    expect(journalContent).toContain("## [");
-    expect(journalContent).toContain("User\nHello Pokai");
-    expect(journalContent).toContain("Pokai\nResponse from Pokai!");
+    expect(files[0]).toContain("session-abc");
 
-    // Verify pipeline was triggered
+    const content = readFileSync(join(conversationDir, files[0]), "utf-8");
+    expect(content).toContain("User\nHello Pokai");
+    expect(content).toContain("Pokai\nResponse from Pokai!");
+    expect(content).toContain("session_id: session-abc");
+    expect(content).toContain("last_active_at:");
+
     expect(runPipeline).toHaveBeenCalledWith("session-abc");
   });
 
   it("returns an error if no model is configured (agent is null)", async () => {
     const stdin = new MockReadable();
     const stdout = new MockWritable();
-    const runPipeline = vi.fn();
 
     const listener = startIPCListener({
       stdin,
       stdout,
       getAgent: () => null,
-      journalDir,
-      runPipeline,
-      getModelName: () => "",
+      conversationDir,
+      runPipeline: vi.fn(),
+      getModelName: () => "google/gemini-1.5-flash",
     });
     activeListeners.push(listener);
 
@@ -144,7 +142,7 @@ describe("startIPCListener", () => {
       command: "chat",
       args: {
         message: "Hello",
-        sessionId: "session-xyz",
+        sessionId: "session-abc",
       },
     }));
 
@@ -157,7 +155,7 @@ describe("startIPCListener", () => {
     expect(resp.error).toContain("No model configured");
   });
 
-  it("logs tool execution turns chronologically in the journal file", async () => {
+  it("logs tool execution turns chronologically in the conversation file", async () => {
     const stdin = new MockReadable();
     const stdout = new MockWritable();
     const mockAgent = {
@@ -167,14 +165,14 @@ describe("startIPCListener", () => {
           {
             toolCalls: [
               {
-                toolCallId: "call-1",
+                toolCallId: "tc-1",
                 toolName: "list_topics",
                 args: {},
               },
             ],
             toolResults: [
               {
-                toolCallId: "call-1",
+                toolCallId: "tc-1",
                 result: ["work", "personal"],
               },
             ],
@@ -182,14 +180,13 @@ describe("startIPCListener", () => {
         ],
       }),
     } as any;
-    const runPipeline = vi.fn().mockResolvedValue({});
 
     const listener = startIPCListener({
       stdin,
       stdout,
       getAgent: () => mockAgent,
-      journalDir,
-      runPipeline,
+      conversationDir,
+      runPipeline: vi.fn().mockResolvedValue({ success: true }),
       getModelName: () => "google/gemini-1.5-flash",
     });
     activeListeners.push(listener);
@@ -206,13 +203,12 @@ describe("startIPCListener", () => {
     await stdout.waitForLine();
 
     expect(stdout.lines).toHaveLength(1);
-    const files = readdirSync(journalDir);
-    const journalContent = readFileSync(join(journalDir, files[0]), "utf-8");
+    const files = readdirSync(conversationDir);
+    const conversationContent = readFileSync(join(conversationDir, files[0]), "utf-8");
 
-    // Must contain user turn, tool turn, and assistant turn
-    expect(journalContent).toContain("User\nShow me my topics");
-    expect(journalContent).toContain("Tool: list_topics\n[\n  \"work\",\n  \"personal\"\n]");
-    expect(journalContent).toContain("Pokai\nHere is the list of topics.");
+    expect(conversationContent).toContain("User\nShow me my topics");
+    expect(conversationContent).toContain("Tool: list_topics\n[\n  \"work\",\n  \"personal\"\n]");
+    expect(conversationContent).toContain("Pokai\nHere is the list of topics.");
   });
 
   it("responds with failure response on malformed JSON or invalid commands", async () => {
@@ -223,7 +219,7 @@ describe("startIPCListener", () => {
       stdin,
       stdout,
       getAgent: () => ({}) as any,
-      journalDir,
+      conversationDir,
       runPipeline: vi.fn(),
       getModelName: () => "google/gemini-1.5-flash",
     });
@@ -243,21 +239,18 @@ describe("startIPCListener", () => {
     const resp2 = JSON.parse(stdout.lines[0]);
     expect(resp2.id).toBe("req-4");
     expect(resp2.success).toBe(false);
-    expect(resp2.error).toContain("Unsupported command");
+    expect(resp2.error).toContain("Unknown command");
   });
 
-  it("createJournalSessionFile reuses existing session file even on different dates (prevents midnight splitting)", () => {
+  it("createConversationSessionFile reuses existing session file even on different dates (prevents midnight splitting)", () => {
     const sessionId = "mid-session-123";
-    // Pre-create a session file with a past date
-    const pastFilePath = join(journalDir, `2026-01-01-${sessionId}.md`);
+    const pastFilePath = join(conversationDir, `2026-01-01-${sessionId}.md`);
     writeFileSync(pastFilePath, "existing content", "utf-8");
 
-    // Call createJournalSessionFile and assert it returns the exact same past path
-    const resolvedPath = createJournalSessionFile(journalDir, sessionId, "test-model");
+    const resolvedPath = createConversationSessionFile(conversationDir, sessionId, "test-model");
     expect(resolvedPath).toBe(pastFilePath);
 
-    // Check no new files were created in the journal dir
-    const files = readdirSync(journalDir);
+    const files = readdirSync(conversationDir);
     expect(files).toHaveLength(1);
     expect(files[0]).toBe(`2026-01-01-${sessionId}.md`);
   });
