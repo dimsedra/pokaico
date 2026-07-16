@@ -85,22 +85,23 @@ export default function App() {
     try {
       const list = await invoke<{ id: string; title: string; created_at: string }[]>('list_conversations');
       
-      // We map the metadata list into full ChatSession objects. 
-      // The messages will be loaded lazily when activeSessionId changes.
-      const mapped: ChatSession[] = list.map((meta) => ({
-        id: meta.id,
-        title: meta.title,
-        messages: [],
-        createdAt: meta.created_at
-      }));
+      setSessions((prev) =>
+        list.map((meta) => {
+          const existing = prev.find((s) => s.id === meta.id);
+          return {
+            id: meta.id,
+            title: meta.title,
+            messages: existing ? existing.messages : [],
+            createdAt: meta.created_at
+          };
+        })
+      );
 
-      setSessions(mapped);
-
-      if (mapped.length > 0) {
-        if (fallbackIdToSelect && mapped.some(s => s.id === fallbackIdToSelect)) {
+      if (list.length > 0) {
+        if (fallbackIdToSelect && list.some(s => s.id === fallbackIdToSelect)) {
           setActiveSessionId(fallbackIdToSelect);
-        } else if (!activeSessionId || !mapped.some(s => s.id === activeSessionId)) {
-          setActiveSessionId(mapped[0].id);
+        } else if (!activeSessionId || !list.some(s => s.id === activeSessionId)) {
+          setActiveSessionId(list[0].id);
         }
       } else {
         setActiveSessionId(null);
