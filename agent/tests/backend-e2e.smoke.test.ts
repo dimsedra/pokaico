@@ -288,45 +288,45 @@ describe("Suite C — Provider registry env resolution", () => {
     }
   });
 
-  it("resolveActiveModel returns stored config provider/model when configured", async () => {
+  it("resolveActiveChatModel returns stored config provider/model when configured", async () => {
     const tmpConfig = join(mkdtempSync(join(tmpdir(), "reg-c1-")), "provider-config.json");
     const registry = new ProviderRegistry(tmpConfig);
 
     await registry.save({
-      activeProvider: "opencode-go",
-      activeModel: "kimi-k2.5",
+      activeChatProvider: "opencode-go",
+      activeChatModel: "kimi-k2.5",
       apiKeys: { "opencode-go": "sk-oc-test-key" },
     });
 
-    const modelId = registry.resolveActiveModel();
+    const modelId = registry.resolveActiveChatModel();
     expect(modelId).toBe("opencode-go/kimi-k2.5");
   });
 
-  it("resolveActiveModel returns stored google provider/model when configured", async () => {
+  it("resolveActiveChatModel returns stored google provider/model when configured", async () => {
     const tmpConfig = join(mkdtempSync(join(tmpdir(), "reg-c2-")), "provider-config.json");
     const registry = new ProviderRegistry(tmpConfig);
 
     await registry.save({
-      activeProvider: "google",
-      activeModel: "gemini-2.0-flash-lite",
+      activeChatProvider: "google",
+      activeChatModel: "gemini-2.0-flash-lite",
       apiKeys: { google: "goog-test-key" },
     });
 
-    const modelId = registry.resolveActiveModel();
+    const modelId = registry.resolveActiveChatModel();
     expect(modelId).toBe("google/gemini-2.0-flash-lite");
   });
 
-  it("resolveActiveModel uses stored config over env fallback", async () => {
+  it("resolveActiveChatModel uses stored config over env fallback", async () => {
     const tmpConfig = join(mkdtempSync(join(tmpdir(), "reg-")), "provider-config.json");
     const registry = new ProviderRegistry(tmpConfig);
 
     await registry.save({
-      activeProvider: "opencode-go",
-      activeModel: "deepseek-v4-flash",
+      activeChatProvider: "opencode-go",
+      activeChatModel: "deepseek-v4-flash",
       apiKeys: { "opencode-go": "sk-stored-key" },
     });
 
-    const modelId = registry.resolveActiveModel();
+    const modelId = registry.resolveActiveChatModel();
     expect(modelId).toBe("opencode-go/deepseek-v4-flash");
   });
 
