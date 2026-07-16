@@ -52,7 +52,19 @@ pub fn run() {
 
       Ok(())
     })
-    .invoke_handler(tauri::generate_handler![commands::chat])
+    .invoke_handler(tauri::generate_handler![
+      commands::chat,
+      commands::get_data_directory,
+      commands::set_data_directory,
+      commands::list_conversations,
+      commands::read_conversation_file,
+      commands::delete_conversation_file,
+      commands::list_diaries,
+      commands::get_memory_items,
+      commands::get_available_providers,
+      commands::save_provider_config,
+      commands::get_active_provider_config
+    ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }

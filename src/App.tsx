@@ -1,131 +1,492 @@
-import { useState, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import "./styles/index.css";
+import { useState, useEffect, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { LeftSidebar } from './components/LeftSidebar';
+import { RightSidebar } from './components/RightSidebar';
+import { ChatWindow } from './components/ChatWindow';
+import { MemoryGraph } from './components/MemoryGraph';
+import { SettingsPanel } from './components/SettingsPanel';
+import { ChatSession, Message, MemoryItem, DiaryEntry, CompanionState, ExpressionType } from './types';
+import './styles/index.css';
 
-interface Message {
-  id: string;
-  sender: "user" | "pokai";
-  text: string;
-  isError?: boolean;
-}
+// Seed initial memory items if directory is completely empty
+const INITIAL_MEMORIES: MemoryItem[] = [
+  { id: 'm1', category: 'preference', details: 'Loves warm chamomile tea', learnedAt: 'Jul 15, 2026' },
+  { id: 'm2', category: 'habit', details: 'Always journals before going to bed', learnedAt: 'Jul 15, 2026' },
+  { id: 'm3', category: 'feeling', details: 'Finds comfort in steady rain sounds', learnedAt: 'Jul 15, 2026' }
+];
 
-function App() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+export default function App() {
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [memories, setMemories] = useState<MemoryItem[]>([]);
+  const [diaries, setDiaries] = useState<DiaryEntry[]>([]);
+  const [companionState, setCompanionState] = useState<CompanionState>({
+    name: 'Shroomy',
+    level: 1,
+    exp: 20,
+    expression: 'idle',
+    moodText: 'Shroomy is happy to listen to you'
+  });
+
+  const [activeView, setActiveView] = useState<'chat' | 'graph' | 'settings'>('chat');
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Tauri settings integration states
+  const [dataDirectory, setDataDirectory] = useState<string>('');
+  const [activeProvider, setActiveProvider] = useState<string>('google');
+  const [activeModel, setActiveModel] = useState<string>('gemini-2.0-flash-lite');
+  const [apiKey, setApiKey] = useState<string>('');
+  const [providersList, setProvidersList] = useState<{ providerId: string; providerName: string; models: string[] }[]>([]);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [apiKeyMissing, setApiKeyMissing] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   const isSubmitting = useRef(false);
 
-  // Generate a unique session ID once per app launch
-  const [sessionId] = useState(() => {
-    return "session-" + Math.random().toString(36).substring(2, 10);
-  });
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto scroll to bottom when messages change
+  // 1. Initial Load from Tauri Commands and LocalStorage
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isSubmitting.current) return;
-
-    const userMessageText = input.trim();
-    setInput("");
-    isSubmitting.current = true;
-    setLoading(true);
-
-    const userMessage: Message = {
-      id: "msg-" + Date.now() + "-user",
-      sender: "user",
-      text: userMessageText,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-
+    // Load companion name, level, exp from localStorage to preserve growth progress
     try {
-      // Invoke Tauri Rust chat command (conversion of snake_case to camelCase argument)
-      const res = await invoke<{ response: string }>("chat", {
-        message: userMessageText,
-        sessionId,
-      });
+      const storedCompanion = localStorage.getItem('pokaico_companion');
+      if (storedCompanion) {
+        setCompanionState(JSON.parse(storedCompanion));
+      }
+      const storedTheme = localStorage.getItem('pokaico_theme') as 'dark' | 'light';
+      if (storedTheme) {
+        setTheme(storedTheme);
+        if (storedTheme === 'light') {
+          document.documentElement.classList.add('theme-light');
+        } else {
+          document.documentElement.classList.remove('theme-light');
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load companion stats from local storage:', e);
+    }
 
-      const pokaiMessage: Message = {
-        id: "msg-" + Date.now() + "-pokai",
-        sender: "pokai",
-        text: res.response,
-      };
+    refreshDataDirectory();
+    refreshSessions();
+    refreshDiaries();
+    refreshMemoryItems();
+    loadProviderConfig();
+  }, []);
 
-      setMessages((prev) => [...prev, pokaiMessage]);
+  const refreshDataDirectory = async () => {
+    try {
+      const dir = await invoke<string>('get_data_directory');
+      setDataDirectory(dir);
     } catch (err) {
-      console.error("Chat error:", err);
-      const errorMessage: Message = {
-        id: "msg-" + Date.now() + "-error",
-        sender: "pokai",
-        text: String(err),
-        isError: true,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      isSubmitting.current = false;
-      setLoading(false);
+      console.error('Failed to get data directory:', err);
     }
   };
 
+  const refreshSessions = async (fallbackIdToSelect?: string) => {
+    try {
+      const list = await invoke<{ id: string; title: string; created_at: string }[]>('list_conversations');
+      
+      // We map the metadata list into full ChatSession objects. 
+      // The messages will be loaded lazily when activeSessionId changes.
+      const mapped: ChatSession[] = list.map((meta) => ({
+        id: meta.id,
+        title: meta.title,
+        messages: [],
+        createdAt: meta.created_at
+      }));
+
+      setSessions(mapped);
+
+      if (mapped.length > 0) {
+        if (fallbackIdToSelect && mapped.some(s => s.id === fallbackIdToSelect)) {
+          setActiveSessionId(fallbackIdToSelect);
+        } else if (!activeSessionId || !mapped.some(s => s.id === activeSessionId)) {
+          setActiveSessionId(mapped[0].id);
+        }
+      } else {
+        setActiveSessionId(null);
+      }
+    } catch (err) {
+      console.error('Failed to list sessions:', err);
+    }
+  };
+
+  const refreshDiaries = async () => {
+    try {
+      const list = await invoke<DiaryEntry[]>('list_diaries');
+      setDiaries(list);
+    } catch (err) {
+      console.error('Failed to list diaries:', err);
+    }
+  };
+
+  const refreshMemoryItems = async () => {
+    try {
+      const list = await invoke<MemoryItem[]>('get_memory_items');
+      if (list.length === 0) {
+        setMemories(INITIAL_MEMORIES);
+      } else {
+        setMemories(list);
+      }
+    } catch (err) {
+      console.error('Failed to load memory items:', err);
+    }
+  };
+
+  const loadProviderConfig = async () => {
+    try {
+      const providers = await invoke<{ providerId: string; providerName: string; models: string[] }[]>('get_available_providers');
+      setProvidersList(providers);
+
+      const activeConfig = await invoke<any>('get_active_provider_config');
+      setActiveProvider(activeConfig.activeProvider || 'google');
+      setActiveModel(activeConfig.activeModel || 'gemini-2.0-flash-lite');
+      
+      const keys = activeConfig.apiKeys || {};
+      const key = keys[activeConfig.activeProvider] || '';
+      setApiKey(key);
+      setApiKeyMissing(!key);
+    } catch (err) {
+      console.error('Failed to load active provider config:', err);
+    }
+  };
+
+  // 2. Load messages for active session when selected
+  useEffect(() => {
+    if (!activeSessionId) return;
+
+    const loadSessionMessages = async () => {
+      try {
+        const fullSession = await invoke<ChatSession>('read_conversation_file', { id: activeSessionId });
+        setSessions((prev) =>
+          prev.map((s) => (s.id === activeSessionId ? { ...s, messages: fullSession.messages } : s))
+        );
+      } catch (err) {
+        console.error(`Failed to load messages for session ${activeSessionId}:`, err);
+      }
+    };
+
+    loadSessionMessages();
+  }, [activeSessionId]);
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
+
+  // 3. Navigation Theme Toggle
+  const handleSetTheme = (newTheme: 'dark' | 'light') => {
+    setTheme(newTheme);
+    try {
+      localStorage.setItem('pokaico_theme', newTheme);
+      if (newTheme === 'light') {
+        document.documentElement.classList.add('theme-light');
+      } else {
+        document.documentElement.classList.remove('theme-light');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // 4. Start New Chat Session
+  const handleNewChat = () => {
+    const newSessionId = "session-" + Math.random().toString(36).substring(2, 10);
+    
+    // Optimistically add to state. It will be saved on disk when the first chat message is sent.
+    const newSession: ChatSession = {
+      id: newSessionId,
+      title: 'New Cozy Journal',
+      messages: [],
+      createdAt: new Date().toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      })
+    };
+
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newSessionId);
+    setActiveView('chat');
+
+    updateCompanionState('happy', 'Shroomy is happy to start a new chat page!');
+  };
+
+  const handleSelectSession = (id: string) => {
+    setActiveSessionId(id);
+    updateCompanionState('happy', 'Shroomy is flipping back through memories...');
+    setTimeout(() => {
+      setCompanionState((prev) => ({ ...prev, expression: 'idle' }));
+    }, 1200);
+  };
+
+  const handleDeleteSession = async (id: string) => {
+    try {
+      await invoke('delete_conversation_file', { id });
+      updateCompanionState('sad', 'Shroomy closed a notebook journal...');
+      refreshSessions();
+    } catch (err) {
+      console.error('Failed to delete session:', err);
+    }
+  };
+
+  const handleUpdateSessionTitle = (_newTitle: string) => {
+    // Session titles are derived dynamically from the first user turn in list_conversations.
+    // Changing titles manually can be supported later by storing a title field, for now we let it sync.
+  };
+
+  const updateCompanionState = (expression: ExpressionType, moodText: string, levelUp = false) => {
+    setCompanionState((prev) => {
+      let newLevel = prev.level;
+      let newExp = prev.exp;
+
+      if (levelUp) {
+        newExp += 15;
+        if (newExp >= 100) {
+          newLevel += 1;
+          newExp = newExp % 100;
+          moodText = `✨ LEVEL UP! ${prev.name} grew closer to you! ✨`;
+          expression = 'excited';
+        }
+      }
+
+      const updated = {
+        ...prev,
+        level: newLevel,
+        exp: newExp,
+        expression,
+        moodText
+      };
+      try {
+        localStorage.setItem('pokaico_companion', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  // 5. Send Chat Message over Tauri Invoke
+  const handleSendMessage = async (text: string) => {
+    if (!activeSessionId || isSubmitting.current) return;
+
+    isSubmitting.current = true;
+    setIsGenerating(true);
+
+    const timeString = new Date().toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+
+    const userMsg: Message = {
+      id: `msg-${Date.now()}-user`,
+      sender: 'user',
+      text,
+      timestamp: timeString
+    };
+
+    // Append user message optimistically
+    setSessions((prev) =>
+      prev.map((s) => (s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsg] } : s))
+    );
+
+    updateCompanionState('thinking', 'Shroomy is looking through memories...');
+
+    try {
+      const res = await invoke<{ response: string }>('chat', {
+        message: text,
+        sessionId: activeSessionId
+      });
+
+      const pokaiMsg: Message = {
+        id: `msg-${Date.now()}-pokai`,
+        sender: 'pokaico',
+        text: res.response,
+        timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      };
+
+      // Append assistant response
+      setSessions((prev) =>
+        prev.map((s) => (s.id === activeSessionId ? { ...s, messages: [...s.messages, pokaiMsg] } : s))
+      );
+
+      // Determine reaction expression based on keywords
+      const lowerText = res.response.toLowerCase();
+      let expr: ExpressionType = 'happy';
+      if (lowerText.includes('excited') || lowerText.includes('luar biasa') || lowerText.includes('glowing')) {
+        expr = 'excited';
+      } else if (lowerText.includes('maaf') || lowerText.includes('sedih') || lowerText.includes('sayang sekali')) {
+        expr = 'sad';
+      }
+
+      updateCompanionState(expr, `Shroomy feels cozy after talking`, true);
+
+      // Refresh list to capture auto-generated title from the first turn
+      await refreshSessions(activeSessionId);
+
+      // Trigger background pipeline refresh (diary and graph nodes) after 12 seconds
+      // to let Node sidecar complete the summarization and extract_topics steps
+      setTimeout(() => {
+        refreshDiaries();
+        refreshMemoryItems();
+      }, 12000);
+
+    } catch (err) {
+      console.error('Chat invoke failed:', err);
+      const errMsg: Message = {
+        id: `msg-${Date.now()}-error`,
+        sender: 'pokaico',
+        text: `[Error Connection] Shroomy is offline. Please check active API key or provider status. Details: ${String(err)}`,
+        timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      };
+
+      setSessions((prev) =>
+        prev.map((s) => (s.id === activeSessionId ? { ...s, messages: [...s.messages, errMsg] } : s))
+      );
+      updateCompanionState('error', 'Shroomy encountered a connection loop error');
+    } finally {
+      setIsGenerating(false);
+      isSubmitting.current = false;
+    }
+  };
+
+  // 6. Settings controls triggers
+  const handleChangeDataDirectory = async () => {
+    const newPath = prompt("Enter new data directory absolute path:", dataDirectory);
+    if (newPath && newPath.trim() !== '' && newPath.trim() !== dataDirectory) {
+      try {
+        await invoke('set_data_directory', { path: newPath.trim() });
+        await refreshDataDirectory();
+        await refreshSessions();
+        await refreshDiaries();
+        await refreshMemoryItems();
+        updateCompanionState('happy', 'Shroomy moved into a new notebook drawer!');
+      } catch (err) {
+        alert(`Failed to set data directory: ${String(err)}`);
+      }
+    }
+  };
+
+  const handleSaveProviderConfig = async (providerId: string, modelId: string, keyVal: string) => {
+    setIsSavingConfig(true);
+    try {
+      await invoke('save_provider_config', {
+        providerId,
+        modelId,
+        apiKey: keyVal
+      });
+      await loadProviderConfig();
+      updateCompanionState('excited', 'Shroomy successfully updated the core AI parameters!');
+    } catch (err) {
+      alert(`Failed to save config: ${String(err)}`);
+      updateCompanionState('error', 'Shroomy failed to update the config');
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
+  const handleClearAllData = async () => {
+    // Clear localStorage values
+    localStorage.removeItem('pokaico_companion');
+    setCompanionState({
+      name: 'Shroomy',
+      level: 1,
+      exp: 20,
+      expression: 'happy',
+      moodText: 'Companion has been fully reset!'
+    });
+    setActiveView('chat');
+
+    // Wiping the actual directory requires file deletions. We let the user manually purge the data directory
+    // or we can implement a Rust command to wipe them if needed. For now resetting UI state is active.
+    setSessions([]);
+    setActiveSessionId(null);
+    setDiaries([]);
+    setMemories(INITIAL_MEMORIES);
+  };
+
+  const handleAddSampleMemory = () => {
+    setMemories(INITIAL_MEMORIES);
+  };
+
   return (
-    <div className="chat-container">
-      <header className="chat-header">
-        <h1>Pokaico</h1>
-        <p>cozy AI lifespace</p>
-      </header>
+    <div className="flex h-screen bg-rosepine-base text-rosepine-text overflow-hidden relative select-none">
+      
+      {/* CRT scanline overlay effect */}
+      <div className="pointer-events-none absolute inset-0 z-40 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0)_60%,rgba(0,0,0,0.15)_100%)] select-none" />
 
-      <div className="messages-list">
-        {messages.length === 0 && (
-          <div className="typing-indicator" style={{ alignSelf: "center", fontStyle: "normal" }}>
-            Start a cozy conversation with Pokai...
-          </div>
+      {/* Left Navigation Sidebar */}
+      <LeftSidebar
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelectSession={handleSelectSession}
+        onNewChat={handleNewChat}
+        activeView={activeView}
+        setActiveView={setActiveView}
+      />
+
+      {/* Main Screen Router */}
+      <div className="flex-1 flex flex-col h-full bg-rosepine-base relative min-w-0">
+        {activeView === 'chat' && (
+          <ChatWindow
+            session={activeSession}
+            onSendMessage={handleSendMessage}
+            onUpdateSessionTitle={handleUpdateSessionTitle}
+            onDeleteSession={handleDeleteSession}
+            isGenerating={isGenerating}
+            companionName={companionState.name}
+            expression={companionState.expression}
+            model={activeModel}
+            setModel={(m) => {
+              // Quick set model
+              const prov = m === 'pokaico-local' ? 'opencode-go' : activeProvider;
+              handleSaveProviderConfig(prov, m, apiKey);
+            }}
+            apiKeyMissing={apiKeyMissing}
+          />
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`message-bubble ${msg.sender} ${msg.isError ? "error" : ""}`}
-          >
-            {msg.text}
-          </div>
-        ))}
-
-        {loading && (
-          <div className="typing-indicator">
-            Pokai is thinking...
-          </div>
+        {activeView === 'graph' && (
+          <MemoryGraph
+            memories={memories}
+            onDeleteMemory={(id) => {
+              setMemories((prev) => prev.filter(m => m.id !== id));
+            }}
+            onAddSampleMemory={handleAddSampleMemory}
+          />
         )}
 
-        <div ref={messagesEndRef} />
+        {activeView === 'settings' && (
+          <SettingsPanel
+            theme={theme}
+            setTheme={handleSetTheme}
+            companionState={companionState}
+            onUpdateCompanionName={(name) => {
+              updateCompanionState(companionState.expression, `Companion name changed to ${name}`);
+              setCompanionState(prev => ({ ...prev, name }));
+            }}
+            onClearAllData={handleClearAllData}
+            onExportData={() => alert("Direct Storage export backup file saved to Documents folder.")}
+            onImportSampleData={() => setMemories(INITIAL_MEMORIES)}
+            dataDirectory={dataDirectory}
+            onChangeDataDirectory={handleChangeDataDirectory}
+            activeProvider={activeProvider}
+            activeModel={activeModel}
+            providersList={providersList}
+            onSaveProviderConfig={handleSaveProviderConfig}
+            apiKey={apiKey}
+            setApiKey={setApiKey}
+            isSavingConfig={isSavingConfig}
+          />
+        )}
       </div>
 
-      <form onSubmit={handleSendMessage} className="input-container">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
-          className="chat-input"
-          readOnly={loading}
-          autoFocus
-        />
-        <button
-          type="submit"
-          className="send-button"
-          disabled={loading || !input.trim()}
-        >
-          Send
-        </button>
-      </form>
+      {/* Right Companion Stats Sidebar */}
+      <RightSidebar
+        companionState={companionState}
+        diaries={diaries}
+        onTriggerDiary={() => {
+          updateCompanionState('thinking', 'Shroomy is summarizing your logs...');
+          setTimeout(() => {
+            refreshDiaries();
+            updateCompanionState('happy', 'Shroomy updated the Companion Logs!');
+          }, 4000);
+        }}
+        isTriggeringDiary={false}
+      />
     </div>
   );
 }
-
-export default App;

@@ -6,6 +6,8 @@ use tokio::sync::oneshot;
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use std::fs;
+use std::path::PathBuf;
 
 static REQ_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -26,7 +28,6 @@ pub struct IPCResponse {
 
 pub struct SidecarState {
     pub child: Mutex<Option<CommandChild>>,
-    // Thread-safe map of pending request IDs to oneshot senders
     pub pending: Mutex<HashMap<String, oneshot::Sender<IPCResponse>>>,
 }
 
@@ -57,33 +58,201 @@ impl Drop for PendingGuard {
     }
 }
 
+// ─────────────────────────────────────────────────────────
+// UI Data Structs
+// ─────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Message {
+    pub id: String,
+    pub sender: String, // "user" or "pokaico"
+    pub text: String,
+    pub timestamp: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ChatSession {
+    pub id: String,
+    pub title: String,
+    pub messages: Vec<Message>,
+    pub created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ChatSessionMeta {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DiaryEntry {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub sentiment: String,
+    pub date: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MemoryItem {
+    pub id: String,
+    pub category: String,
+    pub details: String,
+    pub learned_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ProviderModelList {
+    #[serde(rename = "providerId")]
+    pub provider_id: String,
+    #[serde(rename = "providerName")]
+    pub provider_name: String,
+    pub models: Vec<String>,
+}
+
+// ─────────────────────────────────────────────────────────
+// Path Resolvers (matching agent/src/config.ts)
+// ─────────────────────────────────────────────────────────
+
+fn get_settings_file_path() -> Result<PathBuf, String> {
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map_err(|_| "Failed to resolve home directory".to_string())?;
+    
+    #[cfg(target_os = "windows")]
+    {
+        let app_data = std::env::var("APPDATA")
+            .unwrap_or_else(|_| format!("{}\\AppData\\Roaming", home));
+        Ok(PathBuf::from(app_data).join("Pokaico").join("config.json"))
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let xdg_config = std::env::var("XDG_CONFIG_HOME")
+            .unwrap_or_else(|_| format!("{}/.config", home));
+        Ok(PathBuf::from(xdg_config).join("pokaico").join("config.json"))
+    }
+}
+
+fn get_data_dir() -> Result<PathBuf, String> {
+    let settings_path = get_settings_file_path()?;
+    if settings_path.exists() {
+        if let Ok(content) = fs::read_to_string(&settings_path) {
+            if let Ok(json) = serde_json::from_str::<Value>(&content) {
+                if let Some(data_dir) = json.get("dataDir").and_then(|v| v.as_str()) {
+                    return Ok(PathBuf::from(data_dir));
+                }
+            }
+        }
+    }
+    // Default fallback: Documents/Pokaico
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map_err(|_| "Failed to resolve home directory".to_string())?;
+    Ok(PathBuf::from(home).join("Documents").join("Pokaico"))
+}
+
+// ─────────────────────────────────────────────────────────
+// File parsers
+// ─────────────────────────────────────────────────────────
+
+fn parse_frontmatter(content: &str) -> Option<(HashMap<String, String>, String)> {
+    let normalized = content.replace("\r\n", "\n");
+    let trimmed = normalized.trim_start();
+    if !trimmed.starts_with("---\n") {
+        return None;
+    }
+    let end_fm = trimmed[4..].find("\n---\n")?;
+    let fm_part = &trimmed[4..end_fm + 4];
+    let body_part = &trimmed[end_fm + 8..];
+
+    let mut map = HashMap::new();
+    for line in fm_part.lines() {
+        let clean = line.split('#').next().unwrap_or("").trim();
+        if let Some(idx) = clean.find(':') {
+            let key = clean[..idx].trim().to_string();
+            let value = clean[idx+1..].trim().to_string();
+            map.insert(key, value);
+        }
+    }
+    Some((map, body_part.to_string()))
+}
+
+fn parse_markdown_turns(body: &str) -> Vec<Message> {
+    let mut messages = Vec::new();
+    let mut current_sender: Option<String> = None;
+    let mut current_time = String::new();
+    let mut current_text = Vec::new();
+    let mut id_counter = 0;
+
+    for line in body.lines() {
+        if line.starts_with("## [") {
+            if let Some(sender) = current_sender.take() {
+                messages.push(Message {
+                    id: format!("msg-{}", id_counter),
+                    sender,
+                    text: current_text.join("\n").trim().to_string(),
+                    timestamp: current_time.clone(),
+                });
+                id_counter += 1;
+                current_text.clear();
+            }
+
+            if let Some(close_bracket) = line.find(']') {
+                let time = &line[4..close_bracket];
+                current_time = time.to_string();
+                
+                let role_part = line[close_bracket+1..].trim();
+                let role_lower = role_part.to_lowercase();
+                if role_lower.starts_with("user") {
+                    current_sender = Some("user".to_string());
+                } else {
+                    // "pokai" or "tool" turns mapping
+                    current_sender = Some("pokaico".to_string());
+                }
+            }
+        } else if current_sender.is_some() {
+            current_text.push(line);
+        }
+    }
+
+    if let Some(sender) = current_sender {
+        messages.push(Message {
+            id: format!("msg-{}", id_counter),
+            sender,
+            text: current_text.join("\n").trim().to_string(),
+            timestamp: current_time,
+        });
+    }
+
+    messages
+}
+
+// ─────────────────────────────────────────────────────────
+// Tauri Commands
+// ─────────────────────────────────────────────────────────
+
 #[tauri::command]
 pub async fn chat(
     state: State<'_, Arc<SidecarState>>,
     message: String,
     session_id: String,
 ) -> Result<Value, String> {
-    // 1. Generate unique request ID using atomic counter
     let req_num = REQ_COUNTER.fetch_add(1, Ordering::SeqCst);
     let request_id = format!("req-{}", req_num);
-
-    // 2. Create oneshot channel
     let (tx, rx) = oneshot::channel();
-
-    // 3. Register sender in pending map
     {
         let mut pending = state.pending.lock().map_err(|e| e.to_string())?;
         pending.insert(request_id.clone(), tx);
     }
 
-    // Set up the RAII guard to clean up pending entry on early error/exit
     let mut guard = PendingGuard {
         state: state.inner().clone(),
         id: request_id.clone(),
         active: true,
     };
 
-    // 4. Construct request payload
     let req = IPCRequest {
         id: request_id.clone(),
         command: "chat".to_string(),
@@ -94,8 +263,6 @@ pub async fn chat(
     };
 
     let serialized = serde_json::to_string(&req).map_err(|e| e.to_string())? + "\n";
-
-    // 5. Write to sidecar stdin
     {
         let mut child_lock = state.child.lock().map_err(|e| e.to_string())?;
         if let Some(child) = child_lock.as_mut() {
@@ -105,11 +272,9 @@ pub async fn chat(
         }
     }
 
-    // 6. Await response (with a 90 second timeout)
     let timeout = tokio::time::sleep(std::time::Duration::from_secs(90));
     tokio::select! {
         resp = rx => {
-            // Deactivate guard as we received a resolution
             guard.active = false;
             match resp {
                 Ok(response) => {
@@ -123,11 +288,369 @@ pub async fn chat(
             }
         }
         _ = timeout => {
-            // Guard will automatically remove the pending request on drop
             Err("Request timed out after 90 seconds".to_string())
         }
     }
 }
+
+#[tauri::command]
+pub fn get_data_directory() -> Result<String, String> {
+    let path = get_data_dir()?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn set_data_directory(path: String) -> Result<(), String> {
+    let settings_path = get_settings_file_path()?;
+    let parent = settings_path.parent().ok_or("Invalid settings path")?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    
+    let json = serde_json::json!({ "dataDir": path });
+    fs::write(&settings_path, serde_json::to_string_pretty(&json).unwrap()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_conversations() -> Result<Vec<ChatSessionMeta>, String> {
+    let data_dir = get_data_dir()?;
+    let conv_dir = data_dir.join("conversation");
+    if !conv_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut sessions = Vec::new();
+    let entries = fs::read_dir(conv_dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "md") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Some((fm, _)) = parse_frontmatter(&content) {
+                        let session_id = fm.get("session_id").cloned().unwrap_or_default();
+                        let started_at = fm.get("started_at").cloned().unwrap_or_default();
+                        
+                        // Parse readable date from started_at
+                        let date_str = started_at.split('T').next().unwrap_or("").to_string();
+
+                        // Title is derived from filename prefix date-sessionid or default
+                        let _file_name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                        // Title could be session_id or parsed from the file content's first turn
+                        let mut title = session_id.clone();
+                        
+                        // Try to get title from first user message, matching App.tsx auto-title logic
+                        let parsed_turns = parse_markdown_turns(&content);
+                        if let Some(first_user) = parsed_turns.iter().find(|t| t.sender == "user") {
+                            title = first_user.text.chars().take(20).collect();
+                            if first_user.text.len() > 20 {
+                                title.push_str("...");
+                            }
+                        }
+
+                        if !session_id.is_empty() {
+                            sessions.push(ChatSessionMeta {
+                                id: session_id,
+                                title,
+                                created_at: date_str,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort conversations descending by ID (which has mtime date format)
+    sessions.sort_by(|a, b| b.id.cmp(&a.id));
+    Ok(sessions)
+}
+
+#[tauri::command]
+pub fn read_conversation_file(id: String) -> Result<ChatSession, String> {
+    let data_dir = get_data_dir()?;
+    let conv_dir = data_dir.join("conversation");
+    let entries = fs::read_dir(conv_dir).map_err(|e| e.to_string())?;
+    
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "md") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Some((fm, body)) = parse_frontmatter(&content) {
+                        if fm.get("session_id").map_or(false, |sid| sid == &id) {
+                            let started_at = fm.get("started_at").cloned().unwrap_or_default();
+                            let date_str = started_at.split('T').next().unwrap_or("").to_string();
+                            let messages = parse_markdown_turns(&body);
+
+                            let mut title = id.clone();
+                            if let Some(first_user) = messages.iter().find(|t| t.sender == "user") {
+                                title = first_user.text.chars().take(20).collect();
+                                if first_user.text.len() > 20 {
+                                    title.push_str("...");
+                                }
+                            }
+
+                            return Ok(ChatSession {
+                                id,
+                                title,
+                                messages,
+                                created_at: date_str,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Err("Conversation session not found".to_string())
+}
+
+#[tauri::command]
+pub fn delete_conversation_file(id: String) -> Result<(), String> {
+    let data_dir = get_data_dir()?;
+    let conv_dir = data_dir.join("conversation");
+    let entries = fs::read_dir(conv_dir).map_err(|e| e.to_string())?;
+    
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "md") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Some((fm, _)) = parse_frontmatter(&content) {
+                        if fm.get("session_id").map_or(false, |sid| sid == &id) {
+                            fs::remove_file(path).map_err(|e| e.to_string())?;
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Err("File not found to delete".to_string())
+}
+
+#[tauri::command]
+pub fn list_diaries() -> Result<Vec<DiaryEntry>, String> {
+    let data_dir = get_data_dir()?;
+    let diary_dir = data_dir.join("diary");
+    if !diary_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut diaries = Vec::new();
+    let entries = fs::read_dir(diary_dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "md") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Some((fm, body)) = parse_frontmatter(&content) {
+                        let session_id = fm.get("session_id").cloned().unwrap_or_default();
+                        let started_at = fm.get("started_at").cloned().unwrap_or_default();
+                        
+                        let date_str = started_at.split('T').next().unwrap_or("").to_string();
+                        let body_trimmed = body.trim().to_string();
+
+                        let title = format!("Reflections from {}", date_str);
+                        let sentiment = if body_trimmed.contains("excited") || body_trimmed.contains("luar biasa") {
+                            "excited"
+                        } else if body_trimmed.contains("sedih") || body_trimmed.contains("lelah") {
+                            "supportive"
+                        } else if body_trimmed.contains("belajar") || body_trimmed.contains("saran") {
+                            "reflective"
+                        } else {
+                            "cozy"
+                        };
+
+                        diaries.push(DiaryEntry {
+                            id: session_id,
+                            title,
+                            content: body_trimmed,
+                            sentiment: sentiment.to_string(),
+                            date: date_str,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort newest diary entries first
+    diaries.sort_by(|a, b| b.date.cmp(&a.date));
+    Ok(diaries)
+}
+
+#[tauri::command]
+pub fn get_memory_items() -> Result<Vec<MemoryItem>, String> {
+    let data_dir = get_data_dir()?;
+    let db_path = data_dir.join("pokaico.db");
+    if !db_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    // Open SQLite connection safely using native rusqlite or just parsing directory topics
+    // Crucial: The sqlite database can be read, but reading `/memory/topics/*/CONTEXT.md` on filesystem
+    // is even more robust and doesn't require a rusqlite dependency.
+    let topics_dir = data_dir.join("memory").join("topics");
+    if !topics_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut memories = Vec::new();
+    let entries = fs::read_dir(topics_dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.is_dir() {
+                let context_file = path.join("CONTEXT.md");
+                if context_file.exists() {
+                    let folder_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    if folder_name == "user-profile" || folder_name == "user-background" || folder_name == "user-patterns" {
+                        continue; // Skip foundational topics from basic visual graph to reduce clutter
+                    }
+
+                    if let Ok(content) = fs::read_to_string(&context_file) {
+                        // Extract title / details from content
+                        let clean_details = content
+                            .lines()
+                            .find(|line| !line.starts_with('#') && !line.trim().is_empty())
+                            .unwrap_or(&folder_name)
+                            .trim()
+                            .to_string();
+
+                        // Get learned_at / updated_at date
+                        let metadata = fs::metadata(&context_file).map_err(|e| e.to_string())?;
+                        let modified = metadata.modified().map_err(|e| e.to_string())?;
+                        let datetime: chrono::DateTime<chrono::Local> = modified.into();
+                        let learned_at = datetime.format("%b %d, %Y").to_string();
+
+                        let category = if folder_name.contains("prefer") || folder_name.contains("like") || folder_name.contains("hobby") {
+                            "preference"
+                        } else if folder_name.contains("habit") || folder_name.contains("rout") {
+                            "habit"
+                        } else if folder_name.contains("feel") || folder_name.contains("sad") || folder_name.contains("happy") {
+                            "feeling"
+                        } else {
+                            "fact"
+                        };
+
+                        memories.push(MemoryItem {
+                            id: folder_name,
+                            category: category.to_string(),
+                            details: clean_details,
+                            learned_at,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(memories)
+}
+
+#[tauri::command]
+pub fn get_available_providers() -> Result<Vec<ProviderModelList>, String> {
+    // Return standard offline available providers configuration list
+    Ok(vec![
+        ProviderModelList {
+            provider_id: "opencode-go".to_string(),
+            provider_name: "OpenCode Go".to_string(),
+            models: vec![
+                "kimi-k2.5".to_string(),
+                "kimi-k2.7-code".to_string(),
+                "deepseek-v4-flash".to_string(),
+                "deepseek-v4-pro".to_string(),
+                "qwen3.7-plus".to_string(),
+                "qwen3.7-max".to_string(),
+            ],
+        },
+        ProviderModelList {
+            provider_id: "google".to_string(),
+            provider_name: "Google Gemini".to_string(),
+            models: vec![
+                "gemini-2.0-flash-lite".to_string(),
+                "gemini-2.0-flash".to_string(),
+                "gemini-1.5-flash".to_string(),
+                "gemini-1.5-pro".to_string(),
+            ],
+        },
+        ProviderModelList {
+            provider_id: "anthropic".to_string(),
+            provider_name: "Anthropic Claude".to_string(),
+            models: vec![
+                "claude-3-5-sonnet-latest".to_string(),
+                "claude-3-5-haiku-latest".to_string(),
+            ],
+        },
+    ])
+}
+
+#[tauri::command]
+pub async fn save_provider_config(
+    provider_id: String,
+    model_id: String,
+    api_key: String,
+) -> Result<(), String> {
+    // Write configuration to active provider config file
+    // Matching agent/src/models/provider.ts logic
+    let settings_path = get_settings_file_path()?;
+    let config_dir = settings_path.parent().ok_or("Invalid path")?;
+    let provider_config_path = config_dir.join("provider-config.json");
+    
+    let mut config = serde_json::json!({
+        "activeProvider": provider_id,
+        "activeModel": model_id,
+        "apiKeys": {}
+    });
+
+    if provider_config_path.exists() {
+        if let Ok(content) = fs::read_to_string(&provider_config_path) {
+            if let Ok(parsed) = serde_json::from_str::<Value>(&content) {
+                config = parsed;
+            }
+        }
+    }
+
+    // Set updated values
+    config["activeProvider"] = serde_json::Value::String(provider_id.clone());
+    config["activeModel"] = serde_json::Value::String(model_id);
+    
+    if config["apiKeys"].is_null() {
+        config["apiKeys"] = serde_json::json!({});
+    }
+    
+    config["apiKeys"][provider_id] = serde_json::Value::String(api_key);
+
+    fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
+    fs::write(
+        &provider_config_path, 
+        serde_json::to_string_pretty(&config).unwrap()
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_active_provider_config() -> Result<Value, String> {
+    let settings_path = get_settings_file_path()?;
+    let config_dir = settings_path.parent().ok_or("Invalid path")?;
+    let provider_config_path = config_dir.join("provider-config.json");
+    
+    if provider_config_path.exists() {
+        let content = fs::read_to_string(provider_config_path).map_err(|e| e.to_string())?;
+        let json: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        return Ok(json);
+    }
+    Ok(serde_json::json!({
+        "activeProvider": "google",
+        "activeModel": "gemini-2.0-flash-lite",
+        "apiKeys": {}
+    }))
+}
+
+// ─────────────────────────────────────────────────────────
+// Sidecar background reader loop
+// ─────────────────────────────────────────────────────────
 
 pub fn start_sidecar_reader_loop(
     state: Arc<SidecarState>,
@@ -143,7 +666,6 @@ pub fn start_sidecar_reader_loop(
                         continue;
                     }
 
-                    // Try parsing as IPCResponse
                     if let Ok(response) = serde_json::from_str::<IPCResponse>(trimmed) {
                         if let Ok(mut pending) = state.pending.lock() {
                             if let Some(tx) = pending.remove(&response.id) {
@@ -152,8 +674,6 @@ pub fn start_sidecar_reader_loop(
                             }
                         }
                     }
-
-                    // If not a registered IPC response, print it as a standard sidecar stdout log
                     println!("[pokaico-agent stdout] {}", trimmed);
                 }
                 CommandEvent::Stderr(line_bytes) => {
@@ -162,11 +682,9 @@ pub fn start_sidecar_reader_loop(
                 }
                 CommandEvent::Terminated(status) => {
                     println!("[pokaico-agent] sidecar terminated with status: {:?}", status);
-                    // Clear the child process from state
                     if let Ok(mut child) = state.child.lock() {
                         *child = None;
                     }
-                    // Instantly wake up all pending requests with error to prevent hangs
                     if let Ok(mut pending) = state.pending.lock() {
                         pending.clear();
                     }
