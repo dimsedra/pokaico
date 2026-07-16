@@ -2,15 +2,13 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { google } from "@ai-sdk/google";
 import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
 import { processSession } from "../src/memory/pipeline";
 import { extractTopics } from "../src/memory/extract";
 import type { TopicMeta } from "../src/memory/topics";
+import { resolveTestModel, hasTestKey } from "./helpers/test-model";
 
-const hasApiKey = !!process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-
-describe.runIf(hasApiKey)("pipeline smoke test (real Gemini)", () => {
+describe.runIf(hasTestKey)("pipeline smoke test (real LLM)", () => {
   let db: PokaicoDb;
   let dir: string;
   let conversationDir: string;
@@ -33,7 +31,7 @@ describe.runIf(hasApiKey)("pipeline smoke test (real Gemini)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("summarizes a real conversation with Gemini", async () => {
+  it("summarizes a real conversation", async () => {
     const sessionId = "smoke-summarize";
     const conversationPath = join(conversationDir, `2026-07-08-${sessionId}.md`);
     writeFileSync(conversationPath, `---
@@ -59,7 +57,7 @@ Small team of 4 people, very supportive. I've worked with them for 2 years so I 
 
     const searchSimilar = async () => [] as { topicId: string; score: number; content: string; sourcePath: string }[];
     const indexTopic = async () => {};
-    const model = google("gemini-3.1-flash-lite-preview");
+    const model = resolveTestModel();
 
     const result = await processSession(sessionId, {
       llm: model as never,
@@ -99,7 +97,7 @@ That's impressive! How long does it take?
 ## [15:00:30] User
 About 45 minutes. It's great exercise and saves money on transport.`, "utf-8");
 
-    const model = google("gemini-3.1-flash-lite-preview");
+    const model = resolveTestModel();
     const { summarize } = await import("../src/memory/summarizer");
     const { readSession } = await import("../src/memory/conversation");
 
@@ -118,6 +116,6 @@ About 45 minutes. It's great exercise and saves money on transport.`, "utf-8");
   }, 30_000);
 });
 
-describe.skipIf(hasApiKey)("pipeline smoke test (skipped — no API key)", () => {
+describe.skipIf(hasTestKey)("pipeline smoke test (skipped — no API key)", () => {
   it("placeholder", () => {});
 });

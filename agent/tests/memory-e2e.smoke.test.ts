@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { google } from "@ai-sdk/google";
 import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
 import { createPythonEmbeddingModel } from "../src/embeddings/model";
 import { createEmbeddingService } from "../src/embeddings/service";
@@ -10,10 +9,9 @@ import { processSession } from "../src/memory/pipeline";
 import { retrieveMemory } from "../src/memory/retrieval";
 import { compact } from "../src/memory/compactor";
 import { countTokens } from "../src/memory/tokens";
+import { resolveTestModel, hasTestKey } from "./helpers/test-model";
 
-const hasApiKey = !!process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-
-describe.runIf(hasApiKey)("memory E2E smoke (real Gemini + E5)", () => {
+describe.runIf(hasTestKey)("memory E2E smoke (real LLM + E5)", () => {
   let db: PokaicoDb;
   let dir: string;
   let conversationDir: string;
@@ -72,7 +70,7 @@ Yeah, I fed the starter for 5 days before baking. The crust was perfect but the 
 Practice makes perfect. Keep feeding that starter!
 `, "utf-8");
 
-    const model = google("gemini-3.1-flash-lite-preview");
+    const model = resolveTestModel();
 
     const result = await processSession(sessionId, {
       llm: model as never,
@@ -175,7 +173,7 @@ That's a serious bike! You'll shave minutes off your commute.
 Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
 `, "utf-8");
 
-    const model = google("gemini-3.1-flash-lite-preview");
+    const model = resolveTestModel();
 
     const result = await processSession(sessionId, {
       llm: model as never,
@@ -216,7 +214,7 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
     expect(cyclingContent.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it("Test 4: compaction condenses oversized content within the cap (real Gemini)", async () => {
+  it("Test 4: compaction condenses oversized content within the cap (real LLM)", async () => {
     const cap = 300;
     const current = Array.from(
       { length: 40 },
@@ -226,7 +224,7 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
 
     expect(countTokens(current)).toBeGreaterThan(cap * 2);
 
-    const model = google("gemini-3.1-flash-lite-preview");
+    const model = resolveTestModel();
     const result = await compact({
       current,
       newInfo: "The user just completed their first 100km ride and felt great afterwards.",
@@ -312,6 +310,6 @@ Yeah I'm excited. The old bike was a heavy mountain bike, not ideal for road.
   }, 30_000);
 });
 
-describe.skipIf(hasApiKey)("E2E (skipped — no API key)", () => {
+describe.skipIf(hasTestKey)("E2E (skipped — no API key)", () => {
   it("placeholder", () => {});
 });
