@@ -10,8 +10,6 @@ Pokaico is my little corner in that world. Not better — just different. Built 
 
 Not just your chat history. The patterns. What matters to you. How you like to communicate. All of it — growing with you, every session, without you ever having to repeat yourself.
 
----
-
 ## how it works
 
 Pokaico sits on your desktop. Right there, in its own window. Pixel art glowing softly. Ready.
@@ -24,8 +22,6 @@ When you start a new conversation, your companion reads from these topics. It kn
 
 You can browse the topics any time. Edit them. Delete them. They're just folders and markdown files — yours to keep, yours to understand. No black box, no hidden database you can't touch.
 
----
-
 ## what makes it different
 
 **It remembers you, not just your messages.** Most AI apps keep a chat log. Pokaico distills your conversations into organized knowledge — your preferences, your stories, your patterns — and uses that to truly understand you over time.
@@ -36,47 +32,24 @@ You can browse the topics any time. Edit them. Delete them. They're just folders
 
 **Cozy by design.** Pixel art. Warm palette. A little mushroom companion named Shroomy who levels up as you chat. This isn't a productivity tool — it's a space that feels like yours.
 
----
-
 ## what it is and what it isn't
 
-Pokaico is:
-
-- A cozy desktop companion with pixel art and warm vibes
-- A memory that actually sticks — persistent, organized, growing
-- Your data, on your machine, in files you can read
-- Model-agnostic — bring any provider, any API key
-
-Pokaico isn't:
-
-- A productivity tool (no kanban, no calendars, no email)
-- A cloud service (everything stays on your machine)
-- A generic chatbot wrapper
-- Trying to be the fastest, smartest, or most powerful anything
-
----
+| Pokaico is | Pokaico isn't |
+|---|---|
+| A cozy desktop companion with pixel art and warm vibes | A productivity tool (no kanban, no calendars, no email) |
+| A memory that actually sticks — persistent, organized, growing | A cloud service (everything stays on your machine) |
+| Your data, on your machine, in files you can read | A generic chatbot wrapper |
+| Model-agnostic — bring any provider, any API key | Trying to be the fastest, smartest, or most powerful anything |
 
 ## status
 
-Pokaico is in active development. The core is working — conversations, memory pipeline, topic extraction, multi-provider support, and the pixel art desktop UI are all functional.
-
-There's still plenty to polish. But it already remembers you.
-
----
-
-## tech
-
-Built with care, for people who want their AI to feel like home.
+Pokaico is in active development. The core is working — conversations, memory pipeline, topic extraction, multi-provider support, and the pixel art desktop UI are all functional. There's still plenty to polish. But it already remembers you.
 
 `Tauri 2` · `React` · `TypeScript` · `Mastra` · `SQLite`
-
----
 
 ## come say hi
 
 Star the repo if you'd like to follow along. Pull requests and ideas are welcome, but so is just saying hello.
-
----
 
 <p align="center">
   <img src="assets/outro.jpg" alt="Pokaico — see you next time" width="480" />
