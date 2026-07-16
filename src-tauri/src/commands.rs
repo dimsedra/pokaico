@@ -656,33 +656,43 @@ pub async fn get_available_providers(
 
 #[tauri::command]
 pub async fn save_provider_config(
+    role: String,
     provider_id: String,
     model_id: String,
     api_key: String,
 ) -> Result<(), String> {
-    // Write configuration to active provider config file
-    // Matching agent/src/models/provider.ts logic
     let settings_path = get_settings_file_path()?;
     let config_dir = settings_path.parent().ok_or("Invalid path")?;
     let provider_config_path = config_dir.join("provider-config.json");
     
-    let mut config = serde_json::json!({
-        "activeProvider": provider_id,
-        "activeModel": model_id,
-        "apiKeys": {}
-    });
-
-    if provider_config_path.exists() {
+    let mut config = if provider_config_path.exists() {
         if let Ok(content) = fs::read_to_string(&provider_config_path) {
-            if let Ok(parsed) = serde_json::from_str::<Value>(&content) {
-                config = parsed;
-            }
+            serde_json::from_str::<Value>(&content).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "apiKeys": {}
+                })
+            })
+        } else {
+            serde_json::json!({
+                "apiKeys": {}
+            })
         }
-    }
+    } else {
+        serde_json::json!({
+            "apiKeys": {}
+        })
+    };
 
-    // Set updated values
-    config["activeProvider"] = serde_json::Value::String(provider_id.clone());
-    config["activeModel"] = serde_json::Value::String(model_id);
+    // Set updated values based on role
+    if role == "chat" {
+        config["activeChatProvider"] = serde_json::Value::String(provider_id.clone());
+        config["activeChatModel"] = serde_json::Value::String(model_id);
+    } else if role == "pipeline" {
+        config["activePipelineProvider"] = serde_json::Value::String(provider_id.clone());
+        config["activePipelineModel"] = serde_json::Value::String(model_id);
+    } else {
+        return Err("Invalid role: must be 'chat' or 'pipeline'".to_string());
+    }
     
     if config["apiKeys"].is_null() {
         config["apiKeys"] = serde_json::json!({});

@@ -33,12 +33,13 @@ export default function App() {
   
   // Tauri settings integration states
   const [dataDirectory, setDataDirectory] = useState<string>('');
-  const [activeProvider, setActiveProvider] = useState<string>('google');
-  const [activeModel, setActiveModel] = useState<string>('gemini-2.0-flash-lite');
-  const [apiKey, setApiKey] = useState<string>('');
+  const [activeChatProvider, setActiveChatProvider] = useState<string>('google');
+  const [activeChatModel, setActiveChatModel] = useState<string>('gemini-2.0-flash-lite');
+  const [activePipelineProvider, setActivePipelineProvider] = useState<string>('google');
+  const [activePipelineModel, setActivePipelineModel] = useState<string>('gemini-2.0-flash-lite');
+  const [apiKeysMap, setApiKeysMap] = useState<Record<string, string>>({});
   const [providersList, setProvidersList] = useState<{ providerId: string; providerName: string; models: string[] }[]>([]);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
-  const [apiKeyMissing, setApiKeyMissing] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   const isSubmitting = useRef(false);
@@ -137,13 +138,13 @@ export default function App() {
       setProvidersList(providers);
 
       const activeConfig = await invoke<any>('get_active_provider_config');
-      setActiveProvider(activeConfig.activeProvider || 'google');
-      setActiveModel(activeConfig.activeModel || 'gemini-2.0-flash-lite');
+      setActiveChatProvider(activeConfig.activeChatProvider || activeConfig.activeProvider || 'google');
+      setActiveChatModel(activeConfig.activeChatModel || activeConfig.activeModel || 'gemini-2.0-flash-lite');
+      setActivePipelineProvider(activeConfig.activePipelineProvider || activeConfig.activeProvider || 'google');
+      setActivePipelineModel(activeConfig.activePipelineModel || activeConfig.activeModel || 'gemini-2.0-flash-lite');
       
       const keys = activeConfig.apiKeys || {};
-      const key = keys[activeConfig.activeProvider] || '';
-      setApiKey(key);
-      setApiKeyMissing(!key);
+      setApiKeysMap(keys);
     } catch (err) {
       console.error('Failed to load active provider config:', err);
     }
@@ -360,16 +361,17 @@ export default function App() {
     }
   };
 
-  const handleSaveProviderConfig = async (providerId: string, modelId: string, keyVal: string) => {
+  const handleSaveProviderConfig = async (role: string, providerId: string, modelId: string, keyVal: string) => {
     setIsSavingConfig(true);
     try {
       await invoke('save_provider_config', {
+        role,
         providerId,
         modelId,
         apiKey: keyVal
       });
       await loadProviderConfig();
-      updateCompanionState('excited', 'Shroomy successfully updated the core AI parameters!');
+      updateCompanionState('excited', `Shroomy successfully updated the core AI parameters for ${role}!`);
     } catch (err) {
       alert(`Failed to save config: ${String(err)}`);
       updateCompanionState('error', 'Shroomy failed to update the config');
@@ -429,13 +431,14 @@ export default function App() {
             isGenerating={isGenerating}
             companionName={companionState.name}
             expression={companionState.expression}
-            model={activeModel}
+            model={activeChatModel}
             setModel={(m) => {
-              // Quick set model
-              const prov = m === 'pokaico-local' ? 'opencode-go' : activeProvider;
-              handleSaveProviderConfig(prov, m, apiKey);
+              // Quick set model for chat
+              const prov = m === 'pokaico-local' ? 'opencode-go' : activeChatProvider;
+              const key = apiKeysMap[prov] || '';
+              handleSaveProviderConfig('chat', prov, m, key);
             }}
-            apiKeyMissing={apiKeyMissing}
+            apiKeyMissing={!apiKeysMap[activeChatProvider]}
           />
         )}
 
@@ -463,12 +466,13 @@ export default function App() {
             onImportSampleData={() => setMemories(INITIAL_MEMORIES)}
             dataDirectory={dataDirectory}
             onChangeDataDirectory={handleChangeDataDirectory}
-            activeProvider={activeProvider}
-            activeModel={activeModel}
+            activeChatProvider={activeChatProvider}
+            activeChatModel={activeChatModel}
+            activePipelineProvider={activePipelineProvider}
+            activePipelineModel={activePipelineModel}
             providersList={providersList}
             onSaveProviderConfig={handleSaveProviderConfig}
-            apiKey={apiKey}
-            setApiKey={setApiKey}
+            apiKeysMap={apiKeysMap}
             isSavingConfig={isSavingConfig}
           />
         )}

@@ -74,9 +74,9 @@ let agentInstance: any = null;
 try {
   // Load registry configuration
   await registry.load();
-  activeModelName = registry.resolveActiveModel();
-  activeModelInstance = registry.resolveActiveModelInstance();
-  console.log(`[pokaico-agent] active model: ${activeModelName}`);
+  activeModelName = registry.resolveActiveChatModel();
+  activeModelInstance = registry.resolveActiveChatModelInstance();
+  console.log(`[pokaico-agent] active chat model: ${activeModelName}`);
 } catch (err) {
   console.warn(
     `[pokaico-agent] Warning: No active model resolved at startup. Chat commands will fail until configured. Details: ${(err as Error).message}`
@@ -132,12 +132,11 @@ export function getAgent(): any {
   // If no model was resolved at startup, try reloading config
   if (!activeModelInstance) {
     try {
-      // Reload dynamically (non-blocking)
       registry.load().then(() => {
         try {
-          activeModelName = registry.resolveActiveModel();
-          activeModelInstance = registry.resolveActiveModelInstance();
-          console.log(`[pokaico-agent] active model dynamically loaded: ${activeModelName}`);
+          activeModelName = registry.resolveActiveChatModel();
+          activeModelInstance = registry.resolveActiveChatModelInstance();
+          console.log(`[pokaico-agent] active chat model dynamically loaded: ${activeModelName}`);
         } catch {}
       }).catch(() => {});
     } catch {}
@@ -177,8 +176,8 @@ export function getAgent(): any {
 const runPipeline = async (sessionId: string) => {
   let modelInstance: any;
   try {
-    // Read the current active model from registry
-    modelInstance = registry.resolveActiveModelInstance();
+    // Read the current active model for memory pipeline from registry
+    modelInstance = registry.resolveActivePipelineModelInstance();
   } catch (err) {
     console.error(`[pokaico-agent] Cannot run pipeline for session ${sessionId} - no active model configured.`);
     return;
