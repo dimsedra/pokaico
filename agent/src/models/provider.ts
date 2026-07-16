@@ -18,6 +18,7 @@ export const providerConfigSchema = z.object({
   activeProvider: z.string().optional(),
   activeModel: z.string().optional(),
   apiKeys: z.record(z.string(), z.string()).optional(),
+  enabledModels: z.record(z.string(), z.array(z.string())).optional(),
 });
 
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;

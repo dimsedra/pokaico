@@ -710,6 +710,51 @@ pub async fn save_provider_config(
 }
 
 #[tauri::command]
+pub async fn save_enabled_models(
+    provider_id: String,
+    models: Vec<String>,
+) -> Result<(), String> {
+    let settings_path = get_settings_file_path()?;
+    let config_dir = settings_path.parent().ok_or("Invalid path")?;
+    let provider_config_path = config_dir.join("provider-config.json");
+    
+    let mut config = if provider_config_path.exists() {
+        if let Ok(content) = fs::read_to_string(&provider_config_path) {
+            serde_json::from_str::<Value>(&content).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "apiKeys": {},
+                    "enabledModels": {}
+                })
+            })
+        } else {
+            serde_json::json!({
+                "apiKeys": {},
+                "enabledModels": {}
+            })
+        }
+    } else {
+        serde_json::json!({
+            "apiKeys": {},
+            "enabledModels": {}
+        })
+    };
+
+    if config["enabledModels"].is_null() {
+        config["enabledModels"] = serde_json::json!({});
+    }
+
+    config["enabledModels"][provider_id] = serde_json::to_value(models).map_err(|e| e.to_string())?;
+
+    fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
+    fs::write(
+        &provider_config_path, 
+        serde_json::to_string_pretty(&config).unwrap()
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_active_provider_config() -> Result<Value, String> {
     let settings_path = get_settings_file_path()?;
     let config_dir = settings_path.parent().ok_or("Invalid path")?;

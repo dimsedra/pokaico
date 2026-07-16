@@ -39,6 +39,7 @@ export default function App() {
   const [activePipelineModel, setActivePipelineModel] = useState<string>('gemini-2.0-flash-lite');
   const [apiKeysMap, setApiKeysMap] = useState<Record<string, string>>({});
   const [providersList, setProvidersList] = useState<{ providerId: string; providerName: string; models: string[] }[]>([]);
+  const [enabledModelsMap, setEnabledModelsMap] = useState<Record<string, string[]>>({});
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
@@ -146,8 +147,23 @@ export default function App() {
       
       const keys = activeConfig.apiKeys || {};
       setApiKeysMap(keys);
+
+      const enabled = activeConfig.enabledModels || {};
+      setEnabledModelsMap(enabled);
     } catch (err) {
       console.error('Failed to load active provider config:', err);
+    }
+  };
+
+  const handleSaveEnabledModels = async (providerId: string, models: string[]) => {
+    try {
+      await invoke('save_enabled_models', { providerId, models });
+      setEnabledModelsMap((prev) => ({
+        ...prev,
+        [providerId]: models
+      }));
+    } catch (err) {
+      console.error('Failed to save enabled models:', err);
     }
   };
 
@@ -434,7 +450,12 @@ export default function App() {
             expression={companionState.expression}
             model={activeChatModel}
             providerId={activeChatProvider}
-            availableModels={providersList.find(p => p.providerId === activeChatProvider)?.models || []}
+            availableModels={(providersList.find(p => p.providerId === activeChatProvider)?.models || []).filter(
+              (m) => {
+                const enabledList = enabledModelsMap[activeChatProvider];
+                return !enabledList || enabledList.length === 0 || enabledList.includes(m);
+              }
+            )}
             setModel={(m) => {
               // Quick set model for chat
               const prov = m === 'pokaico-local' ? 'opencode-go' : activeChatProvider;
@@ -477,6 +498,8 @@ export default function App() {
             onSaveProviderConfig={handleSaveProviderConfig}
             apiKeysMap={apiKeysMap}
             isSavingConfig={isSavingConfig}
+            enabledModelsMap={enabledModelsMap}
+            onSaveEnabledModels={handleSaveEnabledModels}
           />
         )}
       </div>

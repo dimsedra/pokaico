@@ -63,7 +63,8 @@ pub fn run() {
       commands::get_memory_items,
       commands::get_available_providers,
       commands::save_provider_config,
-      commands::get_active_provider_config
+      commands::get_active_provider_config,
+      commands::save_enabled_models
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

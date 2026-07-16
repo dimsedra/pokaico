@@ -20,6 +20,8 @@ interface SettingsPanelProps {
   onSaveProviderConfig: (role: string, providerId: string, modelId: string, apiKey: string) => Promise<void>;
   apiKeysMap: Record<string, string>;
   isSavingConfig: boolean;
+  enabledModelsMap: Record<string, string[]>;
+  onSaveEnabledModels: (providerId: string, models: string[]) => Promise<void>;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -39,7 +41,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   providersList,
   onSaveProviderConfig,
   apiKeysMap,
-  isSavingConfig
+  isSavingConfig,
+  enabledModelsMap,
+  onSaveEnabledModels
 }) => {
   const [nameInput, setNameInput] = useState(companionState.name);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -158,6 +162,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   };
 
+  const handleToggleModel = async (providerId: string, modelId: string) => {
+    const providerObj = providersList.find(p => p.providerId === providerId);
+    const allModels = providerObj ? providerObj.models : [];
+    const currentEnabled = enabledModelsMap[providerId] || allModels;
+    
+    let nextEnabled: string[];
+    if (currentEnabled.includes(modelId)) {
+      if (currentEnabled.length <= 1) {
+        alert("At least one model must remain enabled!");
+        return;
+      }
+      nextEnabled = currentEnabled.filter(m => m !== modelId);
+    } else {
+      nextEnabled = [...currentEnabled, modelId];
+    }
+    await onSaveEnabledModels(providerId, nextEnabled);
+  };
+
+  const getModelDisplayName = (m: string) => {
+    const cleanName = m.replace(/^[a-zA-Z0-9-]+\//, '');
+    return cleanName.replace(/-/g, ' ').toUpperCase();
+  };
+
   const chatProviderData = providersList.find(p => p.providerId === selectedChatProvider);
   const chatModels = chatProviderData ? chatProviderData.models : [];
 
@@ -197,6 +224,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <label className="block text-xs font-mono text-rosepine-muted mb-1.5 uppercase">API Key for Chat:</label>
               <input type="password" value={chatKeyInput} onChange={(e) => setChatKeyInput(e.target.value)} placeholder={`API Key for ${selectedChatProvider}...`} className="w-full bg-rosepine-base border-2 border-rosepine-overlay px-3 py-2 font-mono text-xs rounded text-rosepine-text outline-none focus:border-rosepine-rose" />
             </div>
+
+            {chatModels.length > 0 && (
+              <div>
+                <label className="block text-xs font-mono text-rosepine-muted mb-1.5 uppercase">Enabled Models (Select to toggle):</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-rosepine-base border-2 border-rosepine-overlay p-3 rounded max-h-40 overflow-y-auto">
+                  {chatModels.map((m) => {
+                    const isEnabled = (enabledModelsMap[selectedChatProvider] || chatModels).includes(m);
+                    return (
+                      <label key={m} className="flex items-center gap-2 text-xs font-mono cursor-pointer select-none text-rosepine-text hover:text-rosepine-rose">
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          onChange={() => handleToggleModel(selectedChatProvider, m)}
+                          className="accent-rosepine-rose cursor-pointer"
+                        />
+                        <span className="truncate" title={m}>{getModelDisplayName(m)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <button onClick={() => onSaveProviderConfig('chat', selectedChatProvider, selectedChatModel, chatKeyInput)} disabled={isSavingConfig} className="w-full py-2 border-2 border-rosepine-overlay bg-rosepine-overlay hover:bg-rosepine-highlight-med text-rosepine-rose font-press text-xs tracking-wider transition-colors rounded cursor-pointer disabled:opacity-50">
               {isSavingConfig ? 'SAVING CONFIG CORE...' : 'SAVE CHAT SETTINGS'}
             </button>
