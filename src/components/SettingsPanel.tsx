@@ -215,12 +215,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-mono text-rosepine-muted mb-1.5 uppercase">Chat Model:</label>
-              <select value={selectedChatModel} onChange={(e) => setSelectedChatModel(e.target.value)} className="w-full bg-rosepine-base border-2 border-rosepine-overlay px-3 py-2 font-mono text-xs rounded text-rosepine-text outline-none focus:border-rosepine-rose cursor-pointer">
-                {chatModels.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div>
               <label className="block text-xs font-mono text-rosepine-muted mb-1.5 uppercase">API Key for Chat:</label>
               <input type="password" value={chatKeyInput} onChange={(e) => setChatKeyInput(e.target.value)} placeholder={`API Key for ${selectedChatProvider}...`} className="w-full bg-rosepine-base border-2 border-rosepine-overlay px-3 py-2 font-mono text-xs rounded text-rosepine-text outline-none focus:border-rosepine-rose" />
             </div>
