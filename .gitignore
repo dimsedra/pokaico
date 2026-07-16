@@ -31,3 +31,6 @@ agent/python/.venv/
 # Personal tooling (agents, skills, prompts)
 .agents/
 AGENTS.md
+
+#mockup
+.mockup/

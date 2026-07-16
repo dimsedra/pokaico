@@ -192,16 +192,16 @@ Reason: `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topi
 
 ---
 
-## Phase 5: Frontend — Chat UI & Settings [ ]
+## Phase 5: Frontend — Chat UI & Settings [✅]
 
 **Scope:** Desktop UI: chat interface, settings, pixel art aesthetic. IPC bridge sudah selesai di Phase 4 — tinggal UI.
 **Arsitektur komunikasi:** React → `invoke("chat")` (Tauri command, sudah dibangun Phase 4) → stdio → sidecar → balas.
 
-- [ ] Chat UI: message list (markdown rendering), text input, file attachment, typing indicator, error display
-- [ ] Settings page: data directory (first-launch flow), model selection (dari provider registry Phase 4), about
-- [ ] Pixel art styling: cozy palette, pixel fonts, custom decorative elements, grid-aligned layout
-- [ ] **Test:** Component rendering, full chat flow (message → agent → response → display), settings persistence
-- **Deliverable:** Working desktop UI with chat + settings + pixel art aesthetic
+- [x] Chat UI: message list (markdown rendering), text input, file attachment, typing indicator, error display
+- [x] Settings page: data directory, model selection (dari provider registry), about
+- [x] Pixel art styling: cozy palette, pixel fonts, custom decorative elements, grid-aligned layout
+- [x] **Test:** Component rendering, full chat flow (message → agent → response → display), settings persistence
+- **Deliverable:** Working desktop UI with chat + settings + pixel art aesthetic (rosepine theme, CRT scanlines, Shroomy interactive sprites)
 
 ---
 
