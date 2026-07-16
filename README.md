@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png" alt="Pokaico — a cozy AI lifespace" width="720" />
+  <img src="assets/banner.png" alt="Pokaico — a cozy pixel-art AI lifespace" width="720" />
 </p>
 
 There are so many cool ways to work with AI right now. Companions, workspaces, agents that build things for you. I genuinely love watching this space grow.
