@@ -15,8 +15,10 @@
  */
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { google } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
+import { getProviderConfig } from "@mastra/core/llm";
 
 /** True when at least one recognized API key is present in env. */
 export const hasTestKey: boolean = !!(
@@ -66,9 +68,20 @@ export function resolveTestModel(): LanguageModel {
   console.log(`[test-model] Using: ${modelId}`);
 
   if (providerId === "opencode-go") {
+    const config = getProviderConfig("opencode-go");
+    const override = config?.modelOverrides?.[modelName];
+    const baseURL = config?.url ?? "https://opencode.ai/zen/go/v1";
+
+    if (override?.npm === "@ai-sdk/anthropic") {
+      return createAnthropic({
+        baseURL,
+        apiKey: process.env.OPENCODE_API_KEY!,
+      })(modelName) as unknown as LanguageModel;
+    }
+
     const provider = createOpenAICompatible({
       name: "opencode-go",
-      baseURL: "https://opencode.ai/zen/go/v1",
+      baseURL,
       apiKey: process.env.OPENCODE_API_KEY!,
     });
     return provider(modelName);
