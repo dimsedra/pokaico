@@ -183,6 +183,7 @@ Reason: `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topi
 - [x] **Task 10 — Chat assembly** (modify `agent/src/index.ts`): import agent factory + semua tool → agent beneran. Tambah **stdin/stdout JSON-line listener** (Tauri IPC protocol). HTTP `/health` tetap untuk dev.
 - [x] **Task 11 — Tauri bridge** (`src-tauri/src/commands.rs` + `tauri.conf.json`): register sidecar di `externalBin`, Rust command `chat(message)` → JSON stdin → baca stdout → balas ke frontend. *(Rust dikerjakan bareng)*
 - [x] **Task 12 — Frontend wire** (`React component`): panggil `invoke("chat", {message})`, tampilkan response. Text input + chat bubble minimal.
+- [ ] **Task 12.5 — Refactor & Companion Diary** ([#24](https://github.com/dimsedra/pokaico/issues/24)): rename folder `journal/` -> `conversation/`, implementasi third-person diary entry generator di background pipeline, dan perbarui `buildPrompt` untuk memuat 3 diary terakhir sebagai temporal memory.
 
 ### Group D — Close out
 - [ ] **Task 13 — Final**: update PROGRESS.md, full offline suite + smoke test (real Gemini)
