@@ -37,11 +37,13 @@ def main() -> None:
         line = line.strip()
         if not line:
             continue
+        req = None
         try:
             req = json.loads(line)
             resp = handle_request(req)
         except Exception as e:
-            resp = {"type": "error", "message": str(e)}
+            req_id = req.get("id") if isinstance(req, dict) else None
+            resp = {"id": req_id, "type": "error", "message": str(e)}
         sys.stdout.write(json.dumps(resp) + "\n")
         sys.stdout.flush()
 

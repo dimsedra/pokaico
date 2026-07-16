@@ -1,11 +1,25 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+function findPythonScript(startDir: string): string {
+  let dir = startDir;
+  while (true) {
+    const p1 = join(dir, "agent/python/embed.py");
+    if (existsSync(p1)) return p1;
+    const p2 = join(dir, "python/embed.py");
+    if (existsSync(p2)) return p2;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return join(startDir, "../../python/embed.py"); // fallback
+}
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -28,20 +42,35 @@ type PendingEntry = {
   timer: ReturnType<typeof setTimeout>;
 };
 
-function resolvePythonPath(): string {
-  const pythonDir = resolve(__dirname, "../../python");
-  const venvPython = process.platform === "win32"
-    ? resolve(pythonDir, ".venv/Scripts/python.exe")
-    : resolve(pythonDir, ".venv/bin/python");
-  if (existsSync(venvPython)) return venvPython;
+function resolvePythonPath(startDir: string): string {
+  let dir = startDir;
+  while (true) {
+    const p1 = join(dir, "agent/python");
+    if (existsSync(p1)) {
+      const venvPython = process.platform === "win32"
+        ? join(p1, ".venv/Scripts/python.exe")
+        : join(p1, ".venv/bin/python");
+      if (existsSync(venvPython)) return venvPython;
+    }
+    const p2 = join(dir, "python");
+    if (existsSync(p2)) {
+      const venvPython = process.platform === "win32"
+        ? join(p2, ".venv/Scripts/python.exe")
+        : join(p2, ".venv/bin/python");
+      if (existsSync(venvPython)) return venvPython;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
   return "python";
 }
 
 export function createPythonEmbeddingModel(
   options: EmbeddingModelOptions = {},
 ): EmbeddingModel {
-  const python = options.pythonPath ?? process.env.POKAICO_PYTHON_PATH ?? resolvePythonPath();
-  const script = options.scriptPath ?? resolve(__dirname, "../../python/embed.py");
+  const python = options.pythonPath ?? process.env.POKAICO_PYTHON_PATH ?? resolvePythonPath(__dirname);
+  const script = options.scriptPath ?? findPythonScript(__dirname);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   let proc: ChildProcess;
@@ -67,6 +96,10 @@ export function createPythonEmbeddingModel(
   function spawnProc(): void {
     proc = spawn(python, [script], {
       stdio: ["pipe", "pipe", "inherit"],
+    });
+
+    proc.stdin!.on("error", (err) => {
+      console.warn("[pokaico-embedding] stdin error (process likely exited):", err.message);
     });
 
     const rl = createInterface({ input: proc.stdout! });
@@ -167,19 +200,37 @@ export function createPythonEmbeddingModel(
 
   async function embed(text: string): Promise<Float32Array> {
     const data = await sendRequest("embed", { text });
+    if (!Array.isArray(data)) {
+      throw new Error("Invalid embedding response format: expected array");
+    }
     return new Float32Array(data as number[]);
   }
 
   async function embedBatch(texts: string[]): Promise<Float32Array[]> {
     const data = await sendRequest("embed_batch", { texts });
-    return (data as number[][]).map((arr) => new Float32Array(arr));
+    if (!Array.isArray(data)) {
+      throw new Error("Invalid embedding response format: expected array of arrays");
+    }
+    return (data as number[][]).map((arr) => {
+      if (!Array.isArray(arr)) {
+        throw new Error("Invalid embedding batch entry format: expected array");
+      }
+      return new Float32Array(arr);
+    });
   }
 
   async function close(): Promise<void> {
     closed = true;
     if (!exited) {
       proc.kill();
-      await exitPromise;
+      // Wait for exit with a 5 second timeout to prevent hangs
+      const timeout = new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout waiting for process exit")), 5000)
+      );
+      await Promise.race([exitPromise, timeout]).catch((err) => {
+        console.warn("[pokaico-embedding] close timeout, forcing kill:", err.message);
+        proc.kill("SIGKILL");
+      });
     }
   }
 
