@@ -434,6 +434,7 @@ export default function App() {
             expression={companionState.expression}
             model={activeChatModel}
             providerId={activeChatProvider}
+            availableModels={providersList.find(p => p.providerId === activeChatProvider)?.models || []}
             setModel={(m) => {
               // Quick set model for chat
               const prov = m === 'pokaico-local' ? 'opencode-go' : activeChatProvider;

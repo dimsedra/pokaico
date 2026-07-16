@@ -12,6 +12,7 @@ interface ChatWindowProps {
   expression: ExpressionType;
   model: string;
   providerId: string;
+  availableModels: string[];
   setModel: (model: string) => void;
   apiKeyMissing: boolean;
 }
@@ -25,6 +26,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   companionName,
   model,
   providerId,
+  availableModels,
   setModel,
   apiKeyMissing
 }) => {
@@ -42,6 +44,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const envKey = getEnvKeyName(providerId);
+  const dropdownModels = Array.from(new Set(['pokaico-local', ...availableModels]));
   const [inputText, setInputText] = useState('');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
@@ -117,11 +120,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setShowModelDropdown(false);
   };
 
-  // Human friendly labels for models
-  const modelLabels: Record<string, string> = {
-    'gemini-3.5-flash': 'GEMINI 3.5 FLASH (COZY)',
-    'gemini-3.1-pro-preview': 'GEMINI 3.1 PRO (DEEP)',
-    'pokaico-local': 'POKAICO OFFLINE (LOCAL)'
+  const getModelLabel = (mKey: string) => {
+    if (mKey === 'pokaico-local') return 'POKAICO OFFLINE (LOCAL)';
+    // Remove provider prefix if present, then replace hyphens with spaces and capitalize
+    const cleanName = mKey.replace(/^[a-zA-Z0-9-]+\//, '');
+    return cleanName.replace(/-/g, ' ').toUpperCase();
   };
 
   if (!session) {
@@ -350,7 +353,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   Companion AI Engine:
                 </span>
                 <div className="space-y-1">
-                  {Object.keys(modelLabels).map((mKey) => (
+                  {dropdownModels.map((mKey) => (
                     <button
                       key={mKey}
                       onClick={() => selectModel(mKey)}
@@ -359,8 +362,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                           ? 'bg-rosepine-overlay text-rosepine-rose'
                           : 'hover:bg-rosepine-base text-rosepine-text'
                       }`}
+                      title={mKey}
                     >
-                      {modelLabels[mKey]}
+                      {getModelLabel(mKey)}
                     </button>
                   ))}
                 </div>
