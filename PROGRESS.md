@@ -186,9 +186,9 @@ Reason: `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topi
 - [x] **Task 12.5 — Refactor & Companion Diary** ([#24](https://github.com/dimsedra/pokaico/issues/24)): rename folder `journal/` -> `conversation/`, implementasi third-person diary entry generator di background pipeline, dan perbarui `buildPrompt` untuk memuat 3 diary terakhir sebagai temporal memory.
 
 ### Group D — Close out
-- [ ] **Task 13 — Final**: update PROGRESS.md, full offline suite + smoke test (real Gemini)
+- [x] **Task 13 — Final**: update PROGRESS.md, full offline suite + smoke test (real LLM/OpenCode/Gemini via `backend-e2e.smoke.test.ts`)
 
-**Deliverable:** Working conversational agent dengan INDEX-primary routing + 6 retrieval tools + native IPC bridge + frontend chat minimal.
+**Deliverable:** Working conversational agent dengan INDEX-primary routing + 6 retrieval tools + native IPC bridge + frontend chat minimal + full E2E smoke suite.
 
 ---
 
