@@ -4,6 +4,7 @@ import { existsSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Agent } from "@mastra/core/agent";
 import { appendTurn, type ConversationTurn } from "./memory/conversation";
+import type { ProviderRegistry } from "./models/provider";
 
 export type IPCMessage = {
   id: string;
@@ -67,8 +68,9 @@ export function startIPCListener(deps: {
   conversationDir: string;
   runPipeline: (sessionId: string) => Promise<any>;
   getModelName: () => string;
+  registry: ProviderRegistry;
 }) {
-  const { stdin, stdout, getAgent, conversationDir, runPipeline, getModelName } = deps;
+  const { stdin, stdout, getAgent, conversationDir, runPipeline, getModelName, registry } = deps;
   const rl = createInterface({
     input: stdin,
     output: undefined,
@@ -98,6 +100,28 @@ export function startIPCListener(deps: {
             error: "Invalid JSON format: " + (err instanceof Error ? err.message : String(err)),
           }) + "\n"
         );
+        return;
+      }
+
+      if (msg.command === "get_models") {
+        try {
+          const models = await registry.getAvailableModels();
+          stdout.write(
+            JSON.stringify({
+              id: msgId,
+              success: true,
+              data: { models },
+            }) + "\n"
+          );
+        } catch (err) {
+          stdout.write(
+            JSON.stringify({
+              id: msgId,
+              success: false,
+              error: err instanceof Error ? err.message : String(err),
+            }) + "\n"
+          );
+        }
         return;
       }
 

@@ -214,4 +214,5 @@ startIPCListener({
   conversationDir: dataPaths.conversationDir,
   runPipeline,
   getModelName: () => activeModelName,
+  registry,
 });

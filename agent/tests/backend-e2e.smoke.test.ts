@@ -492,6 +492,7 @@ describe.runIf(hasTestKey)("Suite E — IPC module-level chat roundtrip (real ag
     stdin = new MockReadable();
     stdout = new MockWritable();
 
+    const testRegistry = new ProviderRegistry(join(dir, "provider-config.json"));
     listener = startIPCListener({
       stdin,
       stdout,
@@ -499,6 +500,7 @@ describe.runIf(hasTestKey)("Suite E — IPC module-level chat roundtrip (real ag
       conversationDir,
       runPipeline: async () => {}, // no-op — pipeline has its own smoke tests
       getModelName: () => "opencode-go/kimi-k2.5",
+      registry: testRegistry,
     });
   });
 
@@ -570,6 +572,33 @@ describe.runIf(hasTestKey)("Suite E — IPC module-level chat roundtrip (real ag
       `[Suite E] Turn count: ${beforeCount} → ${after.turns.length}`,
     );
   }, 60_000);
+
+  it("get_models command returns success response with list of models from registry", async () => {
+    const msg = JSON.stringify({
+      id: "e-3",
+      command: "get_models",
+      args: {},
+    });
+
+    stdout.lines = [];
+    stdin.pushLine(msg);
+    await stdout.waitForLine();
+
+    const parsed = stdout.lastParsed();
+    expect(parsed.id).toBe("e-3");
+    expect(parsed.success).toBe(true);
+    expect(Array.isArray(parsed.data.models)).toBe(true);
+    expect(parsed.data.models.length).toBeGreaterThan(0);
+
+    // Verify format contains providerId and modelId
+    const firstModel = parsed.data.models[0];
+    expect(firstModel.providerId).toBeTruthy();
+    expect(firstModel.modelId).toBeTruthy();
+
+    console.log(
+      `[Suite E] Found ${parsed.data.models.length} models, first: ${firstModel.providerId}/${firstModel.modelId}`,
+    );
+  });
 });
 
 describe.skipIf(hasTestKey)("Suite E — skipped (no API key)", () => {

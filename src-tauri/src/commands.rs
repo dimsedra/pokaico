@@ -549,40 +549,109 @@ pub fn get_memory_items() -> Result<Vec<MemoryItem>, String> {
 }
 
 #[tauri::command]
-pub fn get_available_providers() -> Result<Vec<ProviderModelList>, String> {
-    // Return standard offline available providers configuration list
-    Ok(vec![
-        ProviderModelList {
-            provider_id: "opencode-go".to_string(),
-            provider_name: "OpenCode Go".to_string(),
-            models: vec![
-                "kimi-k2.5".to_string(),
-                "kimi-k2.7-code".to_string(),
-                "deepseek-v4-flash".to_string(),
-                "deepseek-v4-pro".to_string(),
-                "qwen3.7-plus".to_string(),
-                "qwen3.7-max".to_string(),
-            ],
-        },
-        ProviderModelList {
-            provider_id: "google".to_string(),
-            provider_name: "Google Gemini".to_string(),
-            models: vec![
-                "gemini-2.0-flash-lite".to_string(),
-                "gemini-2.0-flash".to_string(),
-                "gemini-1.5-flash".to_string(),
-                "gemini-1.5-pro".to_string(),
-            ],
-        },
-        ProviderModelList {
-            provider_id: "anthropic".to_string(),
-            provider_name: "Anthropic Claude".to_string(),
-            models: vec![
-                "claude-3-5-sonnet-latest".to_string(),
-                "claude-3-5-haiku-latest".to_string(),
-            ],
-        },
-    ])
+pub async fn get_available_providers(
+    state: State<'_, Arc<SidecarState>>,
+) -> Result<Vec<ProviderModelList>, String> {
+    // 1. Send get_models command to sidecar via IPC
+    let req_num = REQ_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let request_id = format!("req-{}", req_num);
+    let (tx, rx) = oneshot::channel();
+    {
+        let mut pending = state.pending.lock().map_err(|e| e.to_string())?;
+        pending.insert(request_id.clone(), tx);
+    }
+
+    let mut guard = PendingGuard {
+        state: state.inner().clone(),
+        id: request_id.clone(),
+        active: true,
+    };
+
+    let req = IPCRequest {
+        id: request_id.clone(),
+        command: "get_models".to_string(),
+        args: serde_json::json!({}),
+    };
+
+    let serialized = serde_json::to_string(&req).map_err(|e| e.to_string())? + "\n";
+    {
+        let mut child_lock = state.child.lock().map_err(|e| e.to_string())?;
+        if let Some(child) = child_lock.as_mut() {
+            child.write(serialized.as_bytes()).map_err(|e| e.to_string())?;
+        } else {
+            return Err("Sidecar is not running".to_string());
+        }
+    }
+
+    let timeout = tokio::time::sleep(std::time::Duration::from_secs(10));
+    let raw_models = tokio::select! {
+        resp = rx => {
+            guard.active = false;
+            match resp {
+                Ok(response) => {
+                    if response.success {
+                        response.data.unwrap_or(Value::Null)
+                    } else {
+                        return Err(response.error.unwrap_or_else(|| "Unknown error".to_string()));
+                    }
+                }
+                Err(_) => return Err("Response channel closed before receiving models".to_string()),
+            }
+        }
+        _ = timeout => {
+            return Err("Request timed out after 10 seconds".to_string());
+        }
+    };
+
+    let models_val = raw_models.get("models").ok_or("Invalid response format: missing models field")?;
+    let models_arr = models_val.as_array().ok_or("Invalid response format: models is not an array")?;
+
+    // Supported 9 providers asked by user
+    let allowed_providers = vec![
+        ("openai", "OpenAI"),
+        ("anthropic", "Anthropic"),
+        ("google", "Google Gemini"),
+        ("xai", "xAI"),
+        ("moonshotai", "Moonshot AI"),
+        ("zai", "Z.AI"),
+        ("deepseek", "Deepseek"),
+        ("openrouter", "OpenRouter"),
+        ("opencode", "Opencode"),
+        ("opencode-go", "Opencode Go"),
+    ];
+
+    let mut provider_map: HashMap<String, (String, Vec<String>)> = HashMap::new();
+    for (pid, pname) in allowed_providers {
+        provider_map.insert(pid.to_string(), (pname.to_string(), Vec::new()));
+    }
+
+    for m in models_arr {
+        if let Some(pid) = m.get("providerId").and_then(|v| v.as_str()) {
+            if let Some(mid) = m.get("modelId").and_then(|v| v.as_str()) {
+                if let Some((_, ref mut models_vec)) = provider_map.get_mut(pid) {
+                    models_vec.push(mid.to_string());
+                }
+            }
+        }
+    }
+
+    let mut result = Vec::new();
+    for (pid, (pname, mut models_vec)) in provider_map {
+        if !models_vec.is_empty() {
+            // Sort models alphabetically to make dropdown clean
+            models_vec.sort();
+            result.push(ProviderModelList {
+                provider_id: pid,
+                provider_name: pname,
+                models: models_vec,
+            });
+        }
+    }
+
+    // Sort providers list alphabetically by provider ID
+    result.sort_by(|a, b| a.provider_id.cmp(&b.provider_id));
+
+    Ok(result)
 }
 
 #[tauri::command]

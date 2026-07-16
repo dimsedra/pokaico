@@ -49,8 +49,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [gainNode, setGainNode] = useState<GainNode | null>(null);
 
   // Selected config builder state
-  const [selectedProvider, setSelectedProvider] = useState(activeProvider || 'opencode-go');
-  const [selectedModel, setSelectedModel] = useState(activeModel || 'kimi-k2.5');
+  const [selectedProvider, setSelectedProvider] = useState(activeProvider || 'google');
+  const [selectedModel, setSelectedModel] = useState(activeModel || 'gemini-2.0-flash-lite');
+
+  React.useEffect(() => {
+    setSelectedProvider(activeProvider || 'google');
+    setSelectedModel(activeModel || 'gemini-2.0-flash-lite');
+  }, [activeProvider, activeModel]);
 
   // Simple synthesized retro lo-fi chord progression using Web Audio API!
   const startLofiSynth = () => {
