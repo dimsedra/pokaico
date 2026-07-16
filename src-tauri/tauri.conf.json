@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.pokaico.app",
   "build": {
-    "frontendDist": "../build",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
@@ -26,6 +26,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": [
+      "binaries/pokaico-agent"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

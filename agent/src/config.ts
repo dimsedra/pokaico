@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "
 
 export type PokaicoPaths = {
   root: string;
-  journalDir: string;
+  conversationDir: string;
+  diaryDir: string;
   memoryDir: string;
   dbPath: string;
 };
@@ -50,14 +51,16 @@ export function resolveDataRoot(override?: string): string {
 export function getPaths(root: string): PokaicoPaths {
   return {
     root,
-    journalDir: join(root, "journal"),
+    conversationDir: join(root, "conversation"),
+    diaryDir: join(root, "diary"),
     memoryDir: join(root, "memory"),
     dbPath: join(root, "pokaico.db"),
   };
 }
 
 export function ensurePaths(paths: PokaicoPaths): void {
-  mkdirSync(paths.journalDir, { recursive: true });
+  mkdirSync(paths.conversationDir, { recursive: true });
+  mkdirSync(paths.diaryDir, { recursive: true });
   mkdirSync(join(paths.memoryDir, "topics"), { recursive: true });
 }
 

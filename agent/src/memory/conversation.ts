@@ -2,24 +2,26 @@ import { readFileSync, writeFileSync, readdirSync, appendFileSync } from "node:f
 import { readFile, readdir } from "node:fs/promises";
 import { join, extname } from "node:path";
 
-export type JournalTurn = {
+export type ConversationTurn = {
   timestamp: string;
   role: "user" | "pokai" | "tool";
   content: string;
   toolName?: string;
 };
 
-export type JournalSession = {
+export type ConversationSession = {
   sessionId: string;
   startedAt: string;
+  lastActiveAt: string;
   model: string;
   extracted: boolean;
-  turns: JournalTurn[];
+  turns: ConversationTurn[];
 };
 
 export type SessionMeta = {
   sessionId: string;
   startedAt: string;
+  lastActiveAt: string;
   model: string;
   extracted: boolean;
 };
@@ -37,13 +39,13 @@ function parseFrontmatter(lines: string[]): Record<string, string> {
   return meta;
 }
 
-function roleLabel(role: JournalTurn["role"]): string {
+function roleLabel(role: ConversationTurn["role"]): string {
   if (role === "user") return "User";
   if (role === "pokai") return "Pokai";
   return "Tool";
 }
 
-function parseRole(label: string): JournalTurn["role"] {
+function parseRole(label: string): ConversationTurn["role"] {
   const base = label.split(":")[0].trim().toLowerCase();
   if (base === "user") return "user";
   if (base === "pokai") return "pokai";
@@ -52,17 +54,46 @@ function parseRole(label: string): JournalTurn["role"] {
 
 const TURN_HEADER_RE = /^##\s+\[(\d{2}:\d{2}:\d{2})\]\s+(User|Pokai|Tool)(?:\s*:\s*(.*))?\s*$/i;
 
-export function appendTurn(path: string, turn: JournalTurn): void {
+export function updateLastActiveAt(path: string, lastActiveAt: string): void {
+  const raw = readFileSync(path, "utf-8");
+  const normalized = raw.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const fmEnd = lines.indexOf("---", 1);
+  if (fmEnd === -1) return;
+
+  let updated = false;
+  for (let i = 1; i < fmEnd; i++) {
+    if (lines[i].startsWith("last_active_at:")) {
+      lines[i] = `last_active_at: ${lastActiveAt}`;
+      updated = true;
+      break;
+    }
+  }
+
+  if (!updated) {
+    lines.splice(fmEnd, 0, `last_active_at: ${lastActiveAt}`);
+  }
+
+  writeFileSync(path, lines.join("\n"), "utf-8");
+}
+
+export function appendTurn(path: string, turn: ConversationTurn): void {
   const label = turn.role === "tool" && turn.toolName ? `Tool: ${turn.toolName}` : roleLabel(turn.role);
   const block = `\n## [${turn.timestamp}] ${label}\n${turn.content}`;
   appendFileSync(path, block, "utf-8");
+
+  try {
+    updateLastActiveAt(path, new Date().toISOString());
+  } catch {
+    // Ignore errors
+  }
 }
 
 function normalizeEol(raw: string): string {
   return raw.replace(/\r\n/g, "\n");
 }
 
-export function parseJournalContent(raw: string): JournalSession {
+export function parseConversationContent(raw: string): ConversationSession {
   const cleanRaw = raw.replace(/^\uFEFF/, "").trimStart();
   const normalized = normalizeEol(cleanRaw);
   const lines = normalized.split("\n");
@@ -90,8 +121,8 @@ export function parseJournalContent(raw: string): JournalSession {
     throw new Error("missing required frontmatter field: model");
   }
 
-  const turns: JournalTurn[] = [];
-  let currentTurn: JournalTurn | null = null;
+  const turns: ConversationTurn[] = [];
+  let currentTurn: ConversationTurn | null = null;
 
   for (let i = fmEnd + 1; i < lines.length; i++) {
     const line = lines[i];
@@ -121,34 +152,35 @@ export function parseJournalContent(raw: string): JournalSession {
   return {
     sessionId: fm["session_id"],
     startedAt: fm["started_at"],
+    lastActiveAt: fm["last_active_at"] ?? fm["started_at"],
     model: fm["model"],
     extracted: fm["extracted"] === "true",
     turns,
   };
 }
 
-export function readSession(path: string): JournalSession {
+export function readSession(path: string): ConversationSession {
   const raw = readFileSync(path, "utf-8");
   try {
-    return parseJournalContent(raw);
+    return parseConversationContent(raw);
   } catch (err) {
-    throw new Error(`Invalid journal file: ${(err as Error).message} in ${path}`);
+    throw new Error(`Invalid conversation file: ${(err as Error).message} in ${path}`);
   }
 }
 
-export async function readSessionAsync(path: string): Promise<JournalSession> {
+export async function readSessionAsync(path: string): Promise<ConversationSession> {
   const raw = await readFile(path, "utf-8");
   try {
-    return parseJournalContent(raw);
+    return parseConversationContent(raw);
   } catch (err) {
-    throw new Error(`Invalid journal file: ${(err as Error).message} in ${path}`);
+    throw new Error(`Invalid conversation file: ${(err as Error).message} in ${path}`);
   }
 }
 
-export function listSessions(journalDir: string): SessionMeta[] {
+export function listSessions(conversationDir: string): SessionMeta[] {
   let entries: string[];
   try {
-    entries = readdirSync(journalDir);
+    entries = readdirSync(conversationDir);
   } catch {
     return [];
   }
@@ -157,10 +189,11 @@ export function listSessions(journalDir: string): SessionMeta[] {
   for (const entry of entries) {
     if (extname(entry) !== ".md") continue;
     try {
-      const session = readSession(join(journalDir, entry));
+      const session = readSession(join(conversationDir, entry));
       sessions.push({
         sessionId: session.sessionId,
         startedAt: session.startedAt,
+        lastActiveAt: session.lastActiveAt,
         model: session.model,
         extracted: session.extracted,
       });
@@ -171,10 +204,10 @@ export function listSessions(journalDir: string): SessionMeta[] {
   return sessions;
 }
 
-export async function listSessionsAsync(journalDir: string): Promise<SessionMeta[]> {
+export async function listSessionsAsync(conversationDir: string): Promise<SessionMeta[]> {
   let entries: string[];
   try {
-    entries = await readdir(journalDir);
+    entries = await readdir(conversationDir);
   } catch {
     return [];
   }
@@ -182,10 +215,11 @@ export async function listSessionsAsync(journalDir: string): Promise<SessionMeta
   const sessionPromises = entries.map(async (entry) => {
     if (extname(entry) !== ".md") return null;
     try {
-      const session = await readSessionAsync(join(journalDir, entry));
+      const session = await readSessionAsync(join(conversationDir, entry));
       return {
         sessionId: session.sessionId,
         startedAt: session.startedAt,
+        lastActiveAt: session.lastActiveAt,
         model: session.model,
         extracted: session.extracted,
       };

@@ -12,7 +12,7 @@ import { z } from "zod";
 export const providerConfigSchema = z.object({
   activeProvider: z.string().optional(),
   activeModel: z.string().optional(),
-  apiKeys: z.record(z.string()).optional(),
+  apiKeys: z.record(z.string(), z.string()).optional(),
 });
 
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
@@ -170,6 +170,20 @@ export class ProviderRegistry {
    */
   resolveActiveModel(): string {
     if (!this.config.activeProvider || !this.config.activeModel) {
+      // Development fallback: prefer TEST_MODEL + matching key from env
+      if (!process.env.VITEST) {
+        const testModel = process.env.TEST_MODEL;
+        if (testModel && testModel.includes("/")) {
+          const [providerId] = testModel.split("/");
+          const envVars = this.getEnvVarNamesForProvider(providerId);
+          const hasKey = envVars.some((v) => process.env[v]);
+          if (hasKey) return testModel;
+        }
+        // Legacy Gemini fallback
+        if (process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY) {
+          return "google/gemini-2.0-flash-lite";
+        }
+      }
       throw new Error("No model configured");
     }
 

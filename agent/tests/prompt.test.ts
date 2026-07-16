@@ -1,21 +1,21 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { mkdtempSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildPrompt } from "../src/mastra/prompt";
 
 let tmpDir: string;
 let memoryDir: string;
-let journalDir: string;
+let diaryDir: string;
 
 beforeAll(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "pokaico-prompt-test-"));
   memoryDir = join(tmpDir, "memory");
-  journalDir = join(tmpDir, "journal");
+  diaryDir = join(tmpDir, "diary");
 
   mkdirSync(memoryDir, { recursive: true });
   mkdirSync(join(memoryDir, "topics"), { recursive: true });
-  mkdirSync(journalDir, { recursive: true });
+  mkdirSync(diaryDir, { recursive: true });
 });
 
 describe("buildPrompt - basic assembly", () => {
@@ -36,9 +36,9 @@ describe("buildPrompt - basic assembly", () => {
     writeFileSync(join(backgroundDir, "CONTEXT.md"), "Name: John Doe", "utf-8");
     writeFileSync(join(patternsDir, "CONTEXT.md"), "User often requests code", "utf-8");
 
-    const prompt = await buildPrompt(memoryDir, undefined, journalDir);
+    const prompt = await buildPrompt(memoryDir, undefined, undefined, diaryDir);
 
-    // Verify it contains basic static instructions (like Pokai identity)
+    // Verify it contains basic static instructions
     expect(prompt).toContain("Pokai");
     
     // Verify it contains INDEX.md content
@@ -53,9 +53,9 @@ describe("buildPrompt - basic assembly", () => {
 
   it("should handle missing files gracefully with placeholders", async () => {
     const emptyMemoryDir = join(tmpDir, "empty-memory");
-    const emptyJournalDir = join(tmpDir, "empty-journal");
+    const emptyDiaryDir = join(tmpDir, "empty-diary");
 
-    const prompt = await buildPrompt(emptyMemoryDir, undefined, emptyJournalDir);
+    const prompt = await buildPrompt(emptyMemoryDir, undefined, undefined, emptyDiaryDir);
 
     expect(prompt).toContain("Pokai");
     expect(prompt).toContain("(No profile information recorded yet.)");
@@ -64,294 +64,120 @@ describe("buildPrompt - basic assembly", () => {
   });
 });
 
-describe("buildPrompt - recent history accumulation", () => {
-  it("should accumulate the last N turns across multiple sessions chronologically", async () => {
-    const histJournalDir = join(tmpDir, "hist-journal");
-    mkdirSync(histJournalDir, { recursive: true });
+describe("buildPrompt - companion diary accumulation", () => {
+  it("should retrieve top 3 diaries sorted by last_active_at descending and inject them chronologically", async () => {
+    const histDiaryDir = join(tmpDir, "hist-diary");
+    mkdirSync(histDiaryDir, { recursive: true });
 
-    const path1 = join(histJournalDir, "2026-07-08-session1.md");
-    const path2 = join(histJournalDir, "2026-07-08-session2.md");
+    // We will create 4 diary files:
+    // A: last active 1 hour ago
+    // B: last active 2 hours ago
+    // C: last active 3 hours ago
+    // D: last active 4 hours ago
+    // The top 3 should be A, B, and C. D should be excluded.
+    // Chronologically oldest first: C (last active 3h ago) -> B (last active 2h ago) -> A (last active 1h ago).
 
-    // Write older session (session1)
-    writeFileSync(
-      path1,
-      [
-        "---",
-        "session_id: sess1",
-        "started_at: 2026-07-08T10:00:00+07:00",
-        "model: test",
-        "extracted: false",
-        "---",
-        "",
-        "## [10:00:01] User",
-        "Message 1",
-        "",
-        "## [10:00:02] Pokai",
-        "Message 2",
-        "",
-        "## [10:00:03] User",
-        "Message 3",
-      ].join("\n"),
-      "utf-8"
-    );
-
-    // Write newer session (session2)
-    writeFileSync(
-      path2,
-      [
-        "---",
-        "session_id: sess2",
-        "started_at: 2026-07-08T11:00:00+07:00",
-        "model: test",
-        "extracted: false",
-        "---",
-        "",
-        "## [11:00:01] User",
-        "Message 4",
-        "",
-        "## [11:00:02] Pokai",
-        "Message 5",
-      ].join("\n"),
-      "utf-8"
-    );
-
-    // Set modification times explicitly (path2 is newer than path1)
-    const now = Date.now();
-    utimesSync(path1, new Date(now - 10000), new Date(now - 10000));
-    utimesSync(path2, new Date(now), new Date(now));
-
-    const prompt = await buildPrompt(memoryDir, undefined, histJournalDir);
-
-    // Verify recent history section exists in the prompt
-    expect(prompt).toContain("Recent Conversation History");
-
-    // Verify it contains the accumulated turns in chronological order
-    // Expected turns gathered: Message 2, Message 3 (from sess1) + Message 4, Message 5 (from sess2)
-    // (since default history capacity is 10, it gathers all 5 turns)
-    expect(prompt).toContain("User: Message 1");
-    expect(prompt).toContain("Pokai: Message 2");
-    expect(prompt).toContain("User: Message 3");
-    expect(prompt).toContain("User: Message 4");
-    expect(prompt).toContain("Pokai: Message 5");
-
-    // Verify order of appearance: Message 3 must appear before Message 4
-    const idx3 = prompt.indexOf("Message 3");
-    const idx4 = prompt.indexOf("Message 4");
-    expect(idx3).toBeLessThan(idx4);
-  });
-
-  it("should sort sessions alphabetically as a tie-breaker if mtimeMs is identical", async () => {
-    const tieJournalDir = join(tmpDir, "tie-journal");
-    mkdirSync(tieJournalDir, { recursive: true });
-
-    // Filenames: session-bbb.md vs session-aaa.md (bbb.md is alphabetically larger/later)
-    const pathA = join(tieJournalDir, "2026-07-08-session-aaa.md");
-    const pathB = join(tieJournalDir, "2026-07-08-session-bbb.md");
+    const pathA = join(histDiaryDir, "diary-a.md");
+    const pathB = join(histDiaryDir, "diary-b.md");
+    const pathC = join(histDiaryDir, "diary-c.md");
+    const pathD = join(histDiaryDir, "diary-d.md");
 
     writeFileSync(
       pathA,
-      [
-        "---",
-        "session_id: sessA",
-        "started_at: 2026-07-08T10:00:00+07:00",
-        "model: test",
-        "extracted: false",
-        "---",
-        "",
-        "## [10:00:01] User",
-        "From Session A",
-      ].join("\n"),
+      `---
+session_id: sessA
+started_at: 2026-07-16T10:00:00Z
+last_active_at: 2026-07-16T10:30:00Z
+---
+Diary entry A content.
+`,
       "utf-8"
     );
 
     writeFileSync(
       pathB,
-      [
-        "---",
-        "session_id: sessB",
-        "started_at: 2026-07-08T11:00:00+07:00",
-        "model: test",
-        "extracted: false",
-        "---",
-        "",
-        "## [11:00:01] User",
-        "From Session B",
-      ].join("\n"),
+      `---
+session_id: sessB
+started_at: 2026-07-16T09:00:00Z
+last_active_at: 2026-07-16T09:30:00Z
+---
+Diary entry B content.
+`,
       "utf-8"
     );
 
-    // Set identical modification times
-    const sameTime = new Date();
-    utimesSync(pathA, sameTime, sameTime);
-    utimesSync(pathB, sameTime, sameTime);
+    writeFileSync(
+      pathC,
+      `---
+session_id: sessC
+started_at: 2026-07-16T08:00:00Z
+last_active_at: 2026-07-16T08:30:00Z
+---
+Diary entry C content.
+`,
+      "utf-8"
+    );
 
-    const prompt = await buildPrompt(memoryDir, undefined, tieJournalDir);
+    writeFileSync(
+      pathD,
+      `---
+session_id: sessD
+started_at: 2026-07-16T07:00:00Z
+last_active_at: 2026-07-16T07:30:00Z
+---
+Diary entry D content.
+`,
+      "utf-8"
+    );
 
-    // Since bbb.md is alphabetically larger, in descending order bbb.md is treated as "newer" (latest).
-    // So session B turns should be chronologically AFTER session A turns in the prompt chunk alignment.
-    // Index of "From Session A" should be less than "From Session B".
-    const idxA = prompt.indexOf("From Session A");
-    const idxB = prompt.indexOf("From Session B");
-    expect(idxA).toBeLessThan(idxB);
+    const prompt = await buildPrompt(memoryDir, undefined, undefined, histDiaryDir);
+
+    expect(prompt).toContain("Companion's Diary");
+    expect(prompt).toContain("Diary entry A content.");
+    expect(prompt).toContain("Diary entry B content.");
+    expect(prompt).toContain("Diary entry C content.");
+    expect(prompt).not.toContain("Diary entry D content.");
+
+    // Verify chronological order (oldest first): C -> B -> A
+    const idxC = prompt.indexOf("Diary entry C content.");
+    const idxB = prompt.indexOf("Diary entry B content.");
+    const idxA = prompt.indexOf("Diary entry A content.");
+
+    expect(idxC).toBeLessThan(idxB);
+    expect(idxB).toBeLessThan(idxA);
   });
 });
 
 describe("buildPrompt - error shielding", () => {
-  it("should handle completely missing journalDir gracefully", async () => {
-    const missingJournalDir = join(tmpDir, "completely-missing-journal-dir");
-    // Do not create this folder. readdir(missingJournalDir) will throw ENOENT.
-
-    const prompt = await buildPrompt(memoryDir, undefined, missingJournalDir);
+  it("should handle completely missing diaryDir gracefully", async () => {
+    const missingDiaryDir = join(tmpDir, "completely-missing-diary-dir");
+    const prompt = await buildPrompt(memoryDir, undefined, undefined, missingDiaryDir);
     expect(prompt).toContain("Pokai");
-    // Should not contain recent history block since it's empty/missing
-    expect(prompt).not.toContain("Recent Conversation History");
+    expect(prompt).not.toContain("Companion's Diary");
   });
 
-  it("should skip corrupted journal files and parse valid ones without throwing", async () => {
-    const corruptJournalDir = join(tmpDir, "corrupt-journal");
-    mkdirSync(corruptJournalDir, { recursive: true });
+  it("should skip corrupted diary files without throwing", async () => {
+    const corruptDiaryDir = join(tmpDir, "corrupt-diary");
+    mkdirSync(corruptDiaryDir, { recursive: true });
 
-    const pathCorrupt = join(corruptJournalDir, "2026-07-08-corrupt.md");
-    const pathValid = join(corruptJournalDir, "2026-07-08-valid.md");
+    const pathCorrupt = join(corruptDiaryDir, "corrupt.md");
+    const pathValid = join(corruptDiaryDir, "valid.md");
 
-    // Write corrupted file (no frontmatter)
-    writeFileSync(pathCorrupt, "This file is completely corrupt\n## [10:00:00] User\nHello", "utf-8");
-
-    // Write valid file
+    writeFileSync(pathCorrupt, "corrupt yaml frontmatter\n---\nDiary corrupt", "utf-8");
     writeFileSync(
       pathValid,
-      [
-        "---",
-        "session_id: val",
-        "started_at: 2026-07-08T12:00:00+07:00",
-        "model: test",
-        "extracted: false",
-        "---",
-        "",
-        "## [12:00:00] User",
-        "Valid message here",
-      ].join("\n"),
+      `---
+session_id: val
+started_at: 2026-07-16T12:00:00Z
+last_active_at: 2026-07-16T12:30:00Z
+---
+Valid diary content here.
+`,
       "utf-8"
     );
 
-    // Make corrupt.md newer so it would normally be processed first
-    const now = Date.now();
-    utimesSync(pathCorrupt, new Date(now), new Date(now));
-    utimesSync(pathValid, new Date(now - 10000), new Date(now - 10000));
-
-    const prompt = await buildPrompt(memoryDir, undefined, corruptJournalDir);
-
-    expect(prompt).toContain("Pokai");
-    // Should contain the valid message
-    expect(prompt).toContain("Valid message here");
+    const prompt = await buildPrompt(memoryDir, undefined, undefined, corruptDiaryDir);
+    expect(prompt).toContain("Valid diary content here.");
+    expect(prompt).not.toContain("Diary corrupt");
   });
 });
-
-describe("buildPrompt - code review fixes", () => {
-  it("should sort sessions chronologically by started_at frontmatter even if mtimeMs is out of order", async () => {
-    const sortJournalDir = join(tmpDir, "sort-journal");
-    mkdirSync(sortJournalDir, { recursive: true });
-
-    const path1 = join(sortJournalDir, "2026-07-08-session1.md");
-    const path2 = join(sortJournalDir, "2026-07-08-session2.md");
-
-    // session1 has started_at = 10:00:00 (older), but we will set its mtime to be newer
-    writeFileSync(
-      path1,
-      [
-        "---",
-        "session_id: sess1",
-        "started_at: 2026-07-08T10:00:00+07:00",
-        "model: test",
-        "extracted: false",
-        "---",
-        "",
-        "## [10:00:00] User",
-        "Message Older",
-      ].join("\n"),
-      "utf-8"
-    );
-
-    // session2 has started_at = 11:00:00 (newer), but we will set its mtime to be older
-    writeFileSync(
-      path2,
-      [
-        "---",
-        "session_id: sess2",
-        "started_at: 2026-07-08T11:00:00+07:00",
-        "model: test",
-        "extracted: false",
-        "---",
-        "",
-        "## [11:00:00] User",
-        "Message Newer",
-      ].join("\n"),
-      "utf-8"
-    );
-
-    // Set mtime of path1 (older session) to be newer in filesystem than path2 (newer session)
-    const now = Date.now();
-    utimesSync(path1, new Date(now), new Date(now));
-    utimesSync(path2, new Date(now - 10000), new Date(now - 10000));
-
-    const prompt = await buildPrompt(memoryDir, undefined, sortJournalDir);
-
-    // If it sorts by started_at frontmatter, "Message Older" must appear BEFORE "Message Newer"
-    const idxOlder = prompt.indexOf("Message Older");
-    const idxNewer = prompt.indexOf("Message Newer");
-    expect(idxOlder).toBeLessThan(idxNewer);
-  });
-
-  it("should indent multi-line turns correctly so they don't break markdown list bullet formatting", async () => {
-    const multilineJournalDir = join(tmpDir, "ml-journal");
-    mkdirSync(multilineJournalDir, { recursive: true });
-
-    const path = join(multilineJournalDir, "2026-07-08-ml.md");
-    writeFileSync(
-      path,
-      [
-        "---",
-        "session_id: sessML",
-        "started_at: 2026-07-08T10:00:00+07:00",
-        "model: test",
-        "extracted: false",
-        "---",
-        "",
-        "## [10:00:00] User",
-        "Line one",
-        "Line two",
-      ].join("\n"),
-      "utf-8"
-    );
-
-    const prompt = await buildPrompt(memoryDir, undefined, multilineJournalDir);
-    expect(prompt).toContain("User: Line one\n  Line two");
-  });
-
-  it("should format tool turns including the toolName suffix", async () => {
-    const toolNameJournalDir = join(tmpDir, "toolname-journal");
-    mkdirSync(toolNameJournalDir, { recursive: true });
-
-    const path = join(toolNameJournalDir, "2026-07-08-tn.md");
-    writeFileSync(
-      path,
-      [
-        "---",
-        "session_id: sessTN",
-        "started_at: 2026-07-08T10:00:00+07:00",
-        "model: test",
-        "extracted: false",
-        "---",
-        "",
-        "## [10:00:00] Tool: search_topics",
-        "Search result here",
-      ].join("\n"),
-      "utf-8"
-    );
-
-    const prompt = await buildPrompt(memoryDir, undefined, toolNameJournalDir);
-    expect(prompt).toContain("Tool (search_topics): Search result here");
-  });
-});
-
-

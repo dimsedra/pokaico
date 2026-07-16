@@ -7,6 +7,7 @@ license = "MIT"
 repository = "https://github.com/dimsedra/pokaico"
 edition = "2021"
 rust-version = "1.77.2"
+default-run = "pokaico"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,11 +16,17 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.6.3" }
+tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.11.3" }
+tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
+tauri-plugin-shell = "2"
+tokio = { version = "1", features = ["sync", "rt", "macros", "time"] }
+
+[[bin]]
+name = "pokaico-agent"
+path = "src/sidecar_wrapper.rs"

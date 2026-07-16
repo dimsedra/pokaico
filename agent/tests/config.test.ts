@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import {
@@ -29,20 +29,22 @@ describe("getPaths", () => {
     const root = "/tmp/test";
     const paths = getPaths(root);
     expect(paths.root).toBe(root);
-    expect(paths.journalDir).toBe(join(root, "journal"));
+    expect(paths.conversationDir).toBe(join(root, "conversation"));
+    expect(paths.diaryDir).toBe(join(root, "diary"));
     expect(paths.memoryDir).toBe(join(root, "memory"));
     expect(paths.dbPath).toBe(join(root, "pokaico.db"));
   });
 });
 
 describe("ensurePaths", () => {
-  it("creates journal and memory/topics directories", () => {
+  it("creates conversation, diary, and memory/topics directories", () => {
     const root = mkdtempSync(join(tmpdir(), "config-ensure-"));
     const paths = getPaths(root);
 
     ensurePaths(paths);
 
-    expect(existsSync(paths.journalDir)).toBe(true);
+    expect(existsSync(paths.conversationDir)).toBe(true);
+    expect(existsSync(paths.diaryDir)).toBe(true);
     expect(existsSync(join(paths.memoryDir, "topics"))).toBe(true);
 
     rmSync(root, { recursive: true, force: true });
@@ -55,14 +57,14 @@ describe("ensurePaths", () => {
     ensurePaths(paths);
     ensurePaths(paths);
 
-    expect(existsSync(paths.journalDir)).toBe(true);
+    expect(existsSync(paths.conversationDir)).toBe(true);
+    expect(existsSync(paths.diaryDir)).toBe(true);
 
     rmSync(root, { recursive: true, force: true });
   });
 });
 
 describe("setDataDir / resolveDataRoot (settings file)", () => {
-  let originalSettingsDir: string | undefined;
   let tempSettingsRoot: string;
 
   beforeAll(() => {

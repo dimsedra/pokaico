@@ -1,5 +1,5 @@
 import { generateText, Output } from "ai";
-import type { LanguageModelV1 } from "ai";
+import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { CompactEdge, CompactResult } from "./types";
 
@@ -37,7 +37,7 @@ export type CompactInput = {
   current: string;
   newInfo: string;
   cap: number;
-  model: LanguageModelV1;
+  model: LanguageModel;
   existingEdges?: CompactEdge[];
 };
 
@@ -61,6 +61,25 @@ Refine the CURRENT content by integrating the NEW information:
 - Stay within the ${cap}-token cap.
 - Only if essential detail genuinely cannot be condensed without losing meaning, move that detail into an overflow resource file and leave an inline reference like "See [notes](resources/<filename>)" in the context.
 - Preserve meaningful connections to other topics/resources. For each edge you output, include a brief reason explaining the relationship.
+
+Respond with a JSON object in this exact format:
+{
+  "context": "The refined CONTEXT.md content within the token cap...",
+  "overflow": [
+    {
+      "filename": "project-details.md",
+      "content": "Detailed overflow content that did not fit in CONTEXT.md",
+      "relationship": "has-detailed-notes"
+    }
+  ],
+  "edges": [
+    {
+      "toTopic": "related-topic-id",
+      "relationship": "related-to",
+      "reason": "Brief explanation of the relationship"
+    }
+  ]
+}
 
 CURRENT CONTEXT.md:
 ${current || "(empty)"}

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { readSession } from "../../src/memory/journal";
+import { readSession } from "../../src/memory/conversation";
 
 describe("E1: ## [HH:MM:ss] inside turn content — FIXED", () => {
   it("correctly keeps false header as content after fix", () => {

@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import type { LanguageModelV1 } from "ai";
+import type { LanguageModel } from "ai";
 import type { PokaicoDb } from "../db/client";
-import { readSession } from "./journal";
+import { readSession } from "./conversation";
+import { generateCompanionDiary, writeDiaryEntry } from "./diary";
 import { readTopic, updateTopic, regenerateIndex, parseIndex, FOUNDATIONAL_TOPIC_IDS } from "./topics";
 import { hasNewMessages, updatePointer } from "./guards";
 import { summarize as defaultSummarize } from "./summarizer";
@@ -26,17 +27,20 @@ export type CompactFn = (input: {
   current: string;
   newInfo: string;
   cap: number;
+  model?: any;
+  existingEdges?: any[];
 }) => Promise<CompactResult>;
 
 const withSessionLock = createMutex();
 
 export type PipelineDeps = {
-  llm: LanguageModelV1;
+  llm: LanguageModel;
   searchSimilar: (query: string, limit?: number) => Promise<SearchResult[]>;
   indexTopic: (topicId: string, content: string) => Promise<void>;
   db: PokaicoDb;
   memoryDir: string;
-  journalDir: string;
+  conversationDir: string;
+  diaryDir: string;
   compact?: CompactFn;
 };
 
@@ -54,27 +58,29 @@ type TopicRow = {
   updated_at: number;
 };
 
-const JOURNAL_FILE_RE = /^\d{4}-\d{2}-\d{2}-(.+)\.md$/;
+const CONVERSATION_FILE_RE = /^\d{4}-\d{2}-\d{2}-(.+)\.md$/;
 
 function parseUnixTimestamp(startedAt: string, hhMmSs: string): number {
-  // Replace the time portion in started_at ISO string with the turn's HH:mm:ss
-  // This preserves the timezone offset correctly
   const datePart = startedAt.substring(0, 10);
   const tzPart = startedAt.slice(19);
   const isoString = `${datePart}T${hhMmSs}${tzPart}`;
-  const ts = new Date(isoString).getTime();
-  return isNaN(ts) ? 0 : ts;
+  let ts = new Date(isoString).getTime();
+  if (isNaN(ts)) return 0;
+
+  const startTs = new Date(startedAt).getTime();
+  if (ts < startTs) {
+    ts += 24 * 60 * 60 * 1000;
+  }
+  return ts;
 }
 
 function getLatestUnixTimestamp(filePath: string): number {
   const content = readFileSync(filePath, "utf-8");
 
-  // Parse frontmatter started_at
   const fmMatch = content.match(/^started_at:\s*(.+)$/m);
   if (!fmMatch) return 0;
   const startedAt = fmMatch[1].trim();
 
-  // Find last timestamp in turns
   const turnTimestamps: string[] = [];
   const turnRe = /^## \[(\d{2}:\d{2}:\d{2})\]/gm;
   let m: RegExpExecArray | null;
@@ -87,22 +93,21 @@ function getLatestUnixTimestamp(filePath: string): number {
   return parseUnixTimestamp(startedAt, lastTurn);
 }
 
-function findJournalFile(journalDir: string, sessionId: string): string | null {
-  if (!existsSync(journalDir)) return null;
-  const entries = readdirSync(journalDir);
+function findConversationFile(conversationDir: string, sessionId: string): string | null {
+  if (!existsSync(conversationDir)) return null;
+  const entries = readdirSync(conversationDir);
   for (const entry of entries) {
-    const match = entry.match(JOURNAL_FILE_RE);
+    const match = entry.match(CONVERSATION_FILE_RE);
     if (match && match[1] === sessionId) {
-      return join(journalDir, entry);
+      return join(conversationDir, entry);
     }
   }
   return null;
 }
 
-function markJournalExtracted(filePath: string): void {
+function markConversationExtracted(filePath: string): void {
   const content = readFileSync(filePath, "utf-8");
 
-  // Replace only within frontmatter (first YAML block between --- markers)
   const fmStart = content.indexOf("---\n");
   const fmEnd = content.indexOf("\n---", fmStart + 4);
   if (fmStart === -1 || fmEnd === -1) return;
@@ -142,230 +147,235 @@ export async function processSession(
   deps: PipelineDeps,
 ): Promise<PipelineResult> {
   return withSessionLock(sessionId, async () => {
-  const { llm, searchSimilar, indexTopic, db, memoryDir, journalDir } = deps;
-  const compact: CompactFn =
-    deps.compact ??
-    ((input) => defaultCompact({ ...input, model: llm }));
+    const { llm, searchSimilar, indexTopic, db, memoryDir, conversationDir, diaryDir } = deps;
+    const compact: CompactFn =
+      deps.compact ??
+      ((input) => defaultCompact({ ...input, model: llm }));
 
-  // Defensive: reject sessionIds that could inject prompt-breaking characters
-  if (!/^[\w][\w-]{0,80}$/.test(sessionId)) {
-    return {
-      sessionId,
-      hasNewMessages: false,
-      summary: null,
-      updates: [],
-      changes: [],
-      reindexed: [],
-      error: `Invalid sessionId format: "${sessionId}"`,
-    };
-  }
+    // Defensive: reject sessionIds that could inject prompt-breaking characters
+    if (!/^[\w][\w-]{0,80}$/.test(sessionId)) {
+      return {
+        sessionId,
+        hasNewMessages: false,
+        summary: null,
+        updates: [],
+        changes: [],
+        reindexed: [],
+        error: `Invalid sessionId format: "${sessionId}"`,
+      };
+    }
 
-  const fullPath = findJournalFile(journalDir, sessionId);
-  if (!fullPath) {
-    return {
-      sessionId,
-      hasNewMessages: false,
-      summary: null,
-      updates: [],
-      changes: [],
-      reindexed: [],
-      error: "Journal file not found",
-    };
-  }
+    const fullPath = findConversationFile(conversationDir, sessionId);
+    if (!fullPath) {
+      return {
+        sessionId,
+        hasNewMessages: false,
+        summary: null,
+        updates: [],
+        changes: [],
+        reindexed: [],
+        error: "Conversation file not found",
+      };
+    }
 
-  const latestTs = getLatestUnixTimestamp(fullPath);
-  if (latestTs === 0) {
-    return {
-      sessionId,
-      hasNewMessages: false,
-      summary: null,
-      updates: [],
-      changes: [],
-      reindexed: [],
-      error: "Could not parse timestamp from journal file",
-    };
-  }
+    const latestTs = getLatestUnixTimestamp(fullPath);
+    if (latestTs === 0) {
+      return {
+        sessionId,
+        hasNewMessages: false,
+        summary: null,
+        updates: [],
+        changes: [],
+        reindexed: [],
+        error: "Could not parse timestamp from conversation file",
+      };
+    }
 
-  // Step 1: Guard
-  if (!hasNewMessages(sessionId, db, latestTs)) {
-    return {
-      sessionId,
-      hasNewMessages: false,
-      summary: null,
-      updates: [],
-      changes: [],
-      reindexed: [],
-    };
-  }
+    // Step 1: Guard
+    if (!hasNewMessages(sessionId, db, latestTs)) {
+      return {
+        sessionId,
+        hasNewMessages: false,
+        summary: null,
+        updates: [],
+        changes: [],
+        reindexed: [],
+      };
+    }
 
-  // Read journal
-  const session = readSession(fullPath);
+    // Read conversation
+    const session = readSession(fullPath);
 
-  let summary: SummaryOutput;
-  try {
-    summary = await withRetry("summarize", () => defaultSummarize(session.turns, llm));
-  } catch (err) {
+    let summary: SummaryOutput;
+    try {
+      summary = await withRetry("summarize", () => defaultSummarize(session.turns, llm));
+    } catch (err) {
+      return {
+        sessionId,
+        hasNewMessages: true,
+        summary: null,
+        updates: [],
+        changes: [],
+        reindexed: [],
+        error: `Summarization failed: ${(err as Error).message}`,
+      };
+    }
+
+    // Cozy Diary Generation Step
+    try {
+      const diaryContent = await withRetry("diary", () => generateCompanionDiary(session.turns, llm));
+      const datePart = session.startedAt.substring(0, 10);
+      const diaryPath = join(diaryDir, `${datePart}-${sessionId}.md`);
+
+      await writeDiaryEntry(
+        diaryPath,
+        diaryContent,
+        sessionId,
+        session.startedAt,
+        session.lastActiveAt
+      );
+    } catch (diaryErr) {
+      console.error("[pokaico] Companion diary generation failed:", diaryErr);
+    }
+
+    // Step 3: Refresh foundational topics
+    let updates: FoundationalUpdate[] = [];
+    try {
+      const foundationalTopics = FOUNDATIONAL_TOPIC_IDS.map((topicId) => ({
+        topicId,
+        currentContent: readTopic(memoryDir, topicId) ?? "",
+      }));
+      updates = await withRetry("refreshFoundational", () =>
+        defaultRefresh(summary, foundationalTopics, llm, sessionId),
+      );
+    } catch (err) {
+      console.error("[pokaico] refreshFoundational failed:", err);
+    }
+
+    // Step 4: Extract topics (similarity-gated)
+    const existingRows = db
+      .prepare("SELECT id, summary, is_foundational, updated_at FROM topics")
+      .all() as TopicRow[];
+
+    const existingMeta = existingRows.map((r) => ({
+      topicId: r.id,
+      summary: r.summary,
+      isFoundational: r.is_foundational === 1,
+      updatedAt: r.updated_at,
+    }));
+
+    const indexTopics = parseIndex(memoryDir);
+    const indexSlugs = new Set(
+      indexTopics
+        .map((t) => t.topicId)
+        .filter((id) => !FOUNDATIONAL_TOPIC_IDS.includes(id)),
+    );
+
+    const changes = await extractTopics(summary, existingMeta, searchSimilar, indexSlugs);
+
+    // Compact update-changes before writing
+    const resolvedChanges: TopicChange[] = [];
+    for (const change of changes) {
+      if (change.action === "update") {
+        try {
+          const current = readTopic(memoryDir, change.topicId) ?? "";
+          const dbEdges = getEdges(db, change.topicId);
+          const mergedEdges = [...(change.edges ?? [])];
+          for (const dbEdge of dbEdges) {
+            if (!mergedEdges.some((e) => e.toTopic === dbEdge.toTopic && e.relationship === dbEdge.relationship)) {
+              mergedEdges.push(dbEdge);
+            }
+          }
+          const result = await compact({
+            current,
+            newInfo: change.content,
+            cap: CONTEXT_CAP,
+            model: llm as never,
+            existingEdges: mergedEdges,
+          });
+          resolvedChanges.push({
+            ...change,
+            content: result.context,
+            overflow: result.overflow,
+            edges: result.edges,
+          });
+        } catch {
+          resolvedChanges.push(change);
+        }
+      } else {
+        resolvedChanges.push(change);
+      }
+    }
+
+    // Step 5: Write phase
+    const writtenTopics = await applyChanges(resolvedChanges, memoryDir, sessionId, latestTs);
+
+    // Apply foundational updates
+    const foundationalUpdated: string[] = [];
+    for (const update of updates) {
+      if (update.newContent !== null) {
+        let content = update.newContent;
+        try {
+          const result = await compact({
+            current: "",
+            newInfo: update.newContent,
+            cap: FOUNDATIONAL_CAP,
+          });
+          content = result.context;
+        } catch {
+          // ignore
+        }
+        updateTopic(memoryDir, update.topicId, content);
+        foundationalUpdated.push(update.topicId);
+      }
+    }
+
+    const allUpdated = [...new Set([...writtenTopics, ...foundationalUpdated])];
+
+    // Step 6: Re-index
+    if (allUpdated.length > 0) {
+      await reindexTopics(allUpdated, memoryDir, db, indexTopic);
+    }
+
+    // Step 6b: Record graph
+    for (const change of resolvedChanges) {
+      if (change.overflow) {
+        for (const o of change.overflow) {
+          writeResource(
+            db,
+            change.topicId,
+            `memory/topics/${change.topicId}/resources/${o.filename}`,
+            "md",
+          );
+        }
+      }
+      if (change.edges) {
+        for (const e of change.edges) {
+          writeEdge(db, change.topicId, e.toTopic, e.relationship, e.reason);
+        }
+      }
+    }
+
+    // Step 6c (observer)
+    try {
+      regenerateIndex(memoryDir, db);
+    } catch (err) {
+      console.error("[pokaico] regenerateIndex failed:", err);
+    }
+
+    // Step 7: Update pointer
+    updatePointer(sessionId, latestTs, db);
+
+    // Step 8: Mark conversation extracted
+    markConversationExtracted(fullPath);
+
     return {
       sessionId,
       hasNewMessages: true,
-      summary: null,
-      updates: [],
-      changes: [],
-      reindexed: [],
-      error: `Summarization failed: ${(err as Error).message}`,
+      summary,
+      updates,
+      changes,
+      reindexed: allUpdated,
     };
-  }
-
-  // Step 3: Refresh foundational topics
-  let updates: FoundationalUpdate[] = [];
-  try {
-    const foundationalTopics = FOUNDATIONAL_TOPIC_IDS.map((topicId) => ({
-      topicId,
-      currentContent: readTopic(memoryDir, topicId) ?? "",
-    }));
-    updates = await withRetry("refreshFoundational", () =>
-      defaultRefresh(summary, foundationalTopics, llm, sessionId),
-    );
-  } catch (err) {
-    console.error("[pokaico] refreshFoundational failed:", err);
-  }
-
-  // Step 4: Extract topics (similarity-gated)
-  const existingRows = db
-    .prepare("SELECT id, summary, is_foundational, updated_at FROM topics")
-    .all() as TopicRow[];
-
-  const existingMeta = existingRows.map((r) => ({
-    topicId: r.id,
-    summary: r.summary,
-    isFoundational: r.is_foundational === 1,
-    updatedAt: r.updated_at,
-  }));
-
-  // Audit before create (issue #4): read the canonical routing map so
-  // extraction can deterministically UPDATE an existing slug instead of
-  // duplicating it. Foundational topics are excluded — they are owned by the
-  // refreshFoundational step, not by extraction.
-  const indexTopics = parseIndex(memoryDir);
-  const indexSlugs = new Set(
-    indexTopics
-      .map((t) => t.topicId)
-      .filter((id) => !FOUNDATIONAL_TOPIC_IDS.includes(id)),
-  );
-
-  const changes = await extractTopics(summary, existingMeta, searchSimilar, indexSlugs);
-
-  // Compact update-changes before writing: LLM condenses current + new info
-  // into the token cap (runs BEFORE acquiring per-topic write locks).
-  const resolvedChanges: TopicChange[] = [];
-  for (const change of changes) {
-    if (change.action === "update") {
-      try {
-        const current = readTopic(memoryDir, change.topicId) ?? "";
-        // Merge DB edges with current session's edges — prefer session edges on conflict.
-        const dbEdges = getEdges(db, change.topicId);
-        const mergedEdges = [...(change.edges ?? [])];
-        for (const dbEdge of dbEdges) {
-          if (!mergedEdges.some((e) => e.toTopic === dbEdge.toTopic && e.relationship === dbEdge.relationship)) {
-            mergedEdges.push(dbEdge);
-          }
-        }
-        const result = await compact({
-          current,
-          newInfo: change.content,
-          cap: CONTEXT_CAP,
-          model: llm as never,
-          existingEdges: mergedEdges,
-        });
-        resolvedChanges.push({
-          ...change,
-          content: result.context,
-          overflow: result.overflow,
-          edges: result.edges,
-        });
-      } catch {
-        // Compaction failed — fall back to writing the raw new info.
-        resolvedChanges.push(change);
-      }
-    } else {
-      resolvedChanges.push(change);
-    }
-  }
-
-  // Step 5: Write phase
-  const writtenTopics = await applyChanges(resolvedChanges, memoryDir, sessionId, latestTs);
-
-  // Apply foundational updates — condense to the foundational cap.
-  const foundationalUpdated: string[] = [];
-  for (const update of updates) {
-    if (update.newContent !== null) {
-      let content = update.newContent;
-      try {
-        const result = await compact({
-          current: "",
-          newInfo: update.newContent,
-          cap: FOUNDATIONAL_CAP,
-        });
-        content = result.context;
-      } catch {
-        // Condensation failed — write the un-condensed content.
-      }
-      updateTopic(memoryDir, update.topicId, content);
-      foundationalUpdated.push(update.topicId);
-    }
-  }
-
-  const allUpdated = [...new Set([...writtenTopics, ...foundationalUpdated])];
-
-  // Step 6: Re-index (also upserts topic rows, needed before edges/resources FK)
-  if (allUpdated.length > 0) {
-    await reindexTopics(allUpdated, memoryDir, db, indexTopic);
-  }
-
-  // Step 6b: Record graph — overflow resources and LLM-judged cross-topic edges.
-  for (const change of resolvedChanges) {
-    if (change.overflow) {
-      for (const o of change.overflow) {
-        writeResource(
-          db,
-          change.topicId,
-          `memory/topics/${change.topicId}/resources/${o.filename}`,
-          "md",
-        );
-      }
-    }
-    if (change.edges) {
-      for (const e of change.edges) {
-        writeEdge(db, change.topicId, e.toTopic, e.relationship, e.reason);
-      }
-    }
-  }
-
-  // Step6c (observer): rebuild INDEX.md from the current topic graph so the
-  // routing map stays fresh after every extraction (issue #3). Deterministic,
-  // LLM-free — runs after all edges/resources are recorded above.
-  // Non-critical: a failure here must NOT abort the extraction (which would
-  // leave the journal unmarked and re-trigger on the next run), so swallow it.
-  try {
-    regenerateIndex(memoryDir, db);
-  } catch (err) {
-    console.error("[pokaico] regenerateIndex failed:", err);
-  }
-
-  // Step 7: Update pointer (do this BEFORE marking journal as extracted)
-  // If this fails, the journal stays extracted:false and will be re-processed safely
-  updatePointer(sessionId, latestTs, db);
-
-  // Step 8: Mark journal extracted
-  markJournalExtracted(fullPath);
-
-  return {
-    sessionId,
-    hasNewMessages: true,
-    summary,
-    updates,
-    changes,
-    reindexed: allUpdated,
-  };
   });
 }

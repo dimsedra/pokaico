@@ -1,5 +1,5 @@
 import { generateText, Output } from "ai";
-import type { LanguageModelV1 } from "ai";
+import type { LanguageModel } from "ai";
 import { z } from "zod";
 import type { FoundationalUpdate, SummaryOutput } from "./types";
 
@@ -28,7 +28,7 @@ const SESSION_ID_RE = /^[\w][\w-]{0,80}$/;
 
 function dedupSessionTags(content: string): string {
   return content.replace(/\[session:([^\]]+)\]/g, (_match, inside) => {
-    const ids = inside.split(",").map((s) => s.trim()).filter(Boolean);
+    const ids = inside.split(",").map((s: string) => s.trim()).filter(Boolean);
     const seen = new Set<string>();
     const deduped: string[] = [];
     for (const id of ids) {
@@ -42,7 +42,7 @@ function dedupSessionTags(content: string): string {
 export async function refreshFoundational(
   summary: SummaryOutput,
   foundationalTopics: FoundationalTopic[],
-  model: LanguageModelV1,
+  model: LanguageModel,
   sessionId?: string,
 ): Promise<FoundationalUpdate[]> {
   if (foundationalTopics.length === 0) return [];
@@ -76,6 +76,22 @@ Rules:
     model,
     output: Output.object({ schema: foundationalSchema }),
     prompt: `Given the conversation summary and each foundational topic's current content, determine if any topic has NEW information from the conversation. If yes, provide the UPDATED full content for that topic — append new info, do not remove existing. If no new info at all, return null for newContent. (Exception: reinforced user-patterns returns hasNewInfo:true — see per-topic instructions.)
+
+Respond with a JSON object in this exact format:
+{
+  "updates": [
+    {
+      "topicId": "user-profile",
+      "newContent": "Updated full content for this topic...",
+      "hasNewInfo": true
+    },
+    {
+      "topicId": "user-background",
+      "newContent": null,
+      "hasNewInfo": false
+    }
+  ]
+}
 
 Conversation Summary: ${summary.summary}
 Key Points: ${summary.keyPoints.join(", ")}

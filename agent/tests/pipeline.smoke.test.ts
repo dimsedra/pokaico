@@ -2,26 +2,27 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { google } from "@ai-sdk/google";
 import { createDb, closeDb, type PokaicoDb } from "../src/db/client";
 import { processSession } from "../src/memory/pipeline";
 import { extractTopics } from "../src/memory/extract";
 import type { TopicMeta } from "../src/memory/topics";
+import { resolveTestModel, hasTestKey } from "./helpers/test-model";
 
-const hasApiKey = !!process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-
-describe.runIf(hasApiKey)("pipeline smoke test (real Gemini)", () => {
+describe.runIf(hasTestKey)("pipeline smoke test (real LLM)", () => {
   let db: PokaicoDb;
   let dir: string;
-  let journalDir: string;
+  let conversationDir: string;
+  let diaryDir: string;
   let memoryDir: string;
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "pipeline-smoke-"));
     db = createDb(join(dir, "test.db"));
-    journalDir = join(dir, "journal");
+    conversationDir = join(dir, "conversation");
+    diaryDir = join(dir, "diary");
     memoryDir = join(dir, "memory");
-    mkdirSync(journalDir, { recursive: true });
+    mkdirSync(conversationDir, { recursive: true });
+    mkdirSync(diaryDir, { recursive: true });
     mkdirSync(join(memoryDir, "topics"), { recursive: true });
   });
 
@@ -30,10 +31,10 @@ describe.runIf(hasApiKey)("pipeline smoke test (real Gemini)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("summarizes a real conversation with Gemini", async () => {
+  it("summarizes a real conversation", async () => {
     const sessionId = "smoke-summarize";
-    const journalPath = join(journalDir, `2026-07-08-${sessionId}.md`);
-    writeFileSync(journalPath, `---
+    const conversationPath = join(conversationDir, `2026-07-08-${sessionId}.md`);
+    writeFileSync(conversationPath, `---
 session_id: ${sessionId}
 started_at: 2026-07-08T14:00:00+07:00
 model: test-model
@@ -56,7 +57,7 @@ Small team of 4 people, very supportive. I've worked with them for 2 years so I 
 
     const searchSimilar = async () => [] as { topicId: string; score: number; content: string; sourcePath: string }[];
     const indexTopic = async () => {};
-    const model = google("gemini-3.1-flash-lite-preview");
+    const model = resolveTestModel();
 
     const result = await processSession(sessionId, {
       llm: model as never,
@@ -64,8 +65,9 @@ Small team of 4 people, very supportive. I've worked with them for 2 years so I 
       indexTopic,
       db,
       memoryDir,
-      journalDir,
-      });
+      conversationDir,
+      diaryDir,
+    });
 
     console.log("Summary:", result.summary?.summary);
     console.log("Key points:", result.summary?.keyPoints);
@@ -75,12 +77,12 @@ Small team of 4 people, very supportive. I've worked with them for 2 years so I 
     expect(result.summary!.summary).toBeTruthy();
     expect(result.summary!.keyPoints.length).toBeGreaterThan(0);
     expect(result.summary!.summary.length).toBeGreaterThan(10);
-  }, 30_000);
+  }, 120_000);
 
   it("extracts a topic from real conversation", async () => {
-    const sessionId = join("smoke-extract");
-    const journalPath = join(journalDir, `2026-07-08-${sessionId}.md`);
-    writeFileSync(journalPath, `---
+    const sessionId = "smoke-extract";
+    const conversationPath = join(conversationDir, `2026-07-08-${sessionId}.md`);
+    writeFileSync(conversationPath, `---
 session_id: ${sessionId}
 started_at: 2026-07-08T15:00:00+07:00
 model: test-model
@@ -95,11 +97,11 @@ That's impressive! How long does it take?
 ## [15:00:30] User
 About 45 minutes. It's great exercise and saves money on transport.`, "utf-8");
 
-    const model = google("gemini-3.1-flash-lite-preview");
+    const model = resolveTestModel();
     const { summarize } = await import("../src/memory/summarizer");
-    const { readSession } = await import("../src/memory/journal");
+    const { readSession } = await import("../src/memory/conversation");
 
-    const session = readSession(journalPath);
+    const session = readSession(conversationPath);
     const summary = await summarize(session.turns, model as never);
 
     const existingTopics: TopicMeta[] = [];
@@ -112,4 +114,8 @@ About 45 minutes. It's great exercise and saves money on transport.`, "utf-8");
     expect(changes[0].action).toBe("create");
     expect(changes.some((c) => /cycl|commut|bike|bicycle/.test(c.topicId))).toBe(true);
   }, 30_000);
+});
+
+describe.skipIf(hasTestKey)("pipeline smoke test (skipped — no API key)", () => {
+  it("placeholder", () => {});
 });
