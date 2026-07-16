@@ -11,6 +11,7 @@ interface ChatWindowProps {
   companionName: string;
   expression: ExpressionType;
   model: string;
+  providerId: string;
   setModel: (model: string) => void;
   apiKeyMissing: boolean;
 }
@@ -23,9 +24,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   isGenerating,
   companionName,
   model,
+  providerId,
   setModel,
   apiKeyMissing
 }) => {
+  const getEnvKeyName = (prov: string) => {
+    if (prov === 'google') return 'GEMINI_API_KEY';
+    if (prov === 'opencode' || prov === 'opencode-go') return 'OPENCODE_API_KEY';
+    if (prov === 'openai') return 'OPENAI_API_KEY';
+    if (prov === 'anthropic') return 'ANTHROPIC_API_KEY';
+    if (prov === 'xai') return 'XAI_API_KEY';
+    if (prov === 'moonshotai') return 'MOONSHOT_API_KEY';
+    if (prov === 'zai') return 'ZAI_API_KEY';
+    if (prov === 'deepseek') return 'DEEPSEEK_API_KEY';
+    if (prov === 'openrouter') return 'OPENROUTER_API_KEY';
+    return `${prov.toUpperCase()}_API_KEY`;
+  };
+
+  const envKey = getEnvKeyName(providerId);
   const [inputText, setInputText] = useState('');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
@@ -180,7 +196,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="bg-rosepine-gold/10 border-b-2 border-rosepine-gold/40 px-6 py-2 flex items-center gap-3 flex-shrink-0 animate-fadeIn">
           <AlertCircle className="w-5 h-5 text-rosepine-gold flex-shrink-0" />
           <div className="text-[11px] font-mono text-rosepine-gold">
-            <span className="font-bold uppercase">No GEMINI_API_KEY found!</span> Pokaico is operating in <span className="underline">Offline Local mode</span>. Add an API key in <span className="font-semibold">Settings &gt; Secrets</span> to activate the full Gemini AI core.
+            <span className="font-bold uppercase">No {envKey} found!</span> Pokaico is operating in <span className="underline">Offline Local mode</span>. Configure an API key in <span className="font-semibold">Settings</span> to activate the full AI core.
           </div>
         </div>
       )}
