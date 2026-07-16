@@ -1,7 +1,7 @@
 import { generateText, Output } from "ai";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
-import type { JournalTurn } from "./journal";
+import type { ConversationTurn } from "./conversation";
 import type { SummaryOutput } from "./types";
 
 const summarySchema = z.object({
@@ -27,7 +27,7 @@ const summarySchema = z.object({
 });
 
 export async function summarize(
-  turns: JournalTurn[],
+  turns: ConversationTurn[],
   model: LanguageModel,
 ): Promise<SummaryOutput> {
   if (turns.length === 0) {
