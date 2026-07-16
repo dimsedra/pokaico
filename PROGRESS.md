@@ -181,7 +181,7 @@ Reason: `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topi
 
 ### Group C — Assembly & IPC
 - [x] **Task 10 — Chat assembly** (modify `agent/src/index.ts`): import agent factory + semua tool → agent beneran. Tambah **stdin/stdout JSON-line listener** (Tauri IPC protocol). HTTP `/health` tetap untuk dev.
-- [ ] **Task 11 — Tauri bridge** (`src-tauri/src/commands.rs` + `tauri.conf.json`): register sidecar di `externalBin`, Rust command `chat(message)` → JSON stdin → baca stdout → balas ke frontend. *(Rust dikerjakan bareng)*
+- [x] **Task 11 — Tauri bridge** (`src-tauri/src/commands.rs` + `tauri.conf.json`): register sidecar di `externalBin`, Rust command `chat(message)` → JSON stdin → baca stdout → balas ke frontend. *(Rust dikerjakan bareng)*
 - [ ] **Task 12 — Frontend wire** (React component): panggil `invoke("chat", {message})`, tampilkan response. Text input + chat bubble minimal.
 
 ### Group D — Close out
