@@ -79,5 +79,5 @@ Star the repo if you'd like to follow along. Pull requests and ideas are welcome
 ---
 
 <p align="center">
-  <img src="assets/banner.png" alt="Pokaico" width="480" />
+  <img src="assets/outro.jpg" alt="Pokaico — see you next time" width="480" />
 </p>
