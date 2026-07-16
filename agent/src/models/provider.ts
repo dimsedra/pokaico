@@ -170,6 +170,10 @@ export class ProviderRegistry {
    */
   resolveActiveModel(): string {
     if (!this.config.activeProvider || !this.config.activeModel) {
+      // Development fallback if environment variables are set in process.env
+      if (process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY) {
+        return "google/gemini-3.1-flash-lite";
+      }
       throw new Error("No model configured");
     }
 

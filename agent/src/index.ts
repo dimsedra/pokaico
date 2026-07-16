@@ -1,7 +1,7 @@
-// Pokaico Agent — Node.js sidecar entry point
-// Spawned by Tauri shell, communicates via IPC
-
 import { createServer } from "node:http";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createPythonEmbeddingModel } from "./embeddings/model";
 import type { EmbeddingModel } from "./embeddings/model";
 import { resolveDataRoot, getPaths, ensurePaths, type PokaicoPaths } from "./config";
@@ -18,6 +18,37 @@ import { createReadSessionTool } from "./mastra/tools/read-session";
 import { createReadResourceTool } from "./mastra/tools/read-resource";
 import { createIngestResourceTool } from "./mastra/tools/ingest-resource";
 import { createXbergExtractor } from "./extract/xberg";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load .env file from project root (for development purposes)
+function loadEnv() {
+  const projectRoot = resolve(__dirname, "../..");
+  const envPath = join(projectRoot, ".env");
+  if (existsSync(envPath)) {
+    try {
+      const content = readFileSync(envPath, "utf-8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx !== -1) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          const val = trimmed.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, ""); // strip quotes
+          if (key && !process.env[key]) {
+            process.env[key] = val;
+          }
+        }
+      }
+      console.log(`[pokaico-agent] Loaded environment variables from ${envPath}`);
+    } catch (err) {
+      console.error(`[pokaico-agent] Failed to read .env file:`, err);
+    }
+  }
+}
+
+loadEnv();
 
 export let embeddingModel: EmbeddingModel | null = null;
 export let dataPaths: PokaicoPaths;
