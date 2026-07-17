@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatSession, ExpressionType } from '../types';
 import { Image, Cpu, Check, AlertCircle, Edit3, Trash2, Sparkles, RefreshCw } from 'lucide-react';
-import { renderTextWithEmojis } from '../utils/emoji';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface ChatWindowProps {
   session: ChatSession | null;
@@ -255,13 +255,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       </div>
                     )}
 
-                    <p className="text-sm font-mono leading-relaxed whitespace-pre-wrap">
-                      {renderTextWithEmojis(
+                    <MarkdownRenderer
+                      content={
                         isUser && m.text.includes('[Attached Image]')
                           ? m.text.split('[Attached Image]')[0]?.trim() || 'Attached an image.'
                           : m.text
-                      )}
-                    </p>
+                      }
+                    />
                   </div>
                 </div>
               );
