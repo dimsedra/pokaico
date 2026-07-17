@@ -1,46 +1,35 @@
 # Cozy Companion Sprite Design Language & Guidelines (64x64)
 
-Dokumen ini mendefinisikan bahasa desain visual, aturan pixel art, dan logika matematika animasi untuk companion prosedural Pokaico. Panduan ini wajib dijadikan acuan oleh developer maupun AI coding agent ketika merancang karakter companion baru (misalnya Slimey, Kitty, dll.) agar serasi dengan estetika cozy-retro Pokaico.
+Dokumen ini mendefinisikan prinsip desain visual tingkat tinggi (*high-level design language*) dan panduan gerak untuk companion Pokaico. Panduan ini dirancang agar cukup fleksibel untuk mengakomodasi berbagai jenis companion dengan anatomi fisik yang berbeda (seperti jamur, slime, kucing, atau robot), sambil tetap menjaga keselarasan estetika cozy-retro Pokaico.
 
 ---
 
-## 1. Aturan Grid & Resolusi Pixel
-- **Logical Grid**: Seluruh companion digambar pada grid logis berukuran **64x64**.
-- **Pixel Rendering**: Di-render ke layar menggunakan CSS `image-rendering: pixelated` agar tepian pixel tetap tajam (*crisp*), tidak blur.
-- **Pivot Point**: Tentukan titik tumpu gravitasi karakter (pusat bawah tubuh, biasanya `Y=54`, `X=32`) agar deformasi membal (*squash & stretch*) berpusat secara alami di tanah.
+## 1. Konsistensi Resolusi & Tampilan Retro
+- **Satu Skala Resolusi**: Semua companion distandardisasi pada grid **64x64** pixel. Hal ini menjamin detail pixel art terasa konsisten di layar.
+- **Rendering Tajam**: Render menggunakan setelan `image-rendering: pixelated` untuk mempertahankan visual retro yang bersih.
+- **Gravitasi & Pivot**: Tentukan titik tumpu gravitasi di bagian bawah karakter (titik kontak dengan tanah) agar deformasi gerak terasa membumi secara alami.
 
 ---
 
-## 2. Palet Warna & Pencahayaan (Cozy Retro Palette)
-Bahasa desain Pokaico berbasis pada tema **Rosepine** yang hangat dan teduh:
-- **Outline Ink (Garis Tepi)**: Selalu gunakan warna gelap yang lembut (misalnya `#0c0e15` atau `#26233a`) untuk membungkus karakter. Hindari hitam pekat murni `#000000`.
-- **Arah Cahaya**: Cahaya datang dari **kiri atas (top-left)**. Oleh karena itu:
-  * Sisi kiri/atas karakter mendapatkan warna dasar dan *highlight* terang.
-  * Sisi kanan/bawah karakter mendapatkan warna *shadow* (bayangan).
-- **Dithering Klasik (Retro Mid-Tones)**:
-  * Gunakan pola catur `% 2 === 0` untuk menciptakan bayangan bergradasi halus (*dither shading*) tanpa menambah palet warna baru.
-  * Contoh implementasi dither catur: `const dither = (rx + ry) % 2 === 0;`
+## 2. Estetika Warna & Pencahayaan (Rosepine Harmony)
+Warna companion harus selaras dengan palet Pokai yang teduh (*cozy lo-fi*):
+- **Outline yang Lembut**: Hindari warna hitam pekat murni (`#000000`). Gunakan warna gelap yang hangat/ungu-abu-abu (seperti warna outline Rosepine `#26233a`) agar menyatu dengan UI.
+- **Konsistensi Arah Cahaya**: Arahkan bayangan seolah-olah cahaya datang dari satu sudut (misalnya kiri atas) untuk memberikan volume 3D dithered retro.
+- **Dithering untuk Dimensi**: Gunakan pola dithering catur untuk shading bayangan transisi, memberikan kesan tekstur retro tanpa memperumit palet warna.
 
 ---
 
-## 3. Struktur Fisiologi & Kustomisasi
-Setiap companion harus mendukung opsi kustomisasi warna dan gaya yang diekspor melalui skema metadata:
-- **Color Customization**: Pisahkan warna dasar (*base*), warna bayangan (*shadow*), dan warna detail kustom (seperti warna mata, blush pipi, aksesoris).
-- **Fisiologi Opsional**: Sediakan opsi gaya fisik (misalnya gaya mata: `bead`/`anime`/`minimal`, atau aksesoris tubuh) untuk menambah kedalaman interaksi kustom.
+## 3. Prinsip Gerak & Animasi (Cozy, Squishy, and Bouncy)
+Setiap companion mengekspresikan emosi standar secara visual dengan prinsip gerak berikut:
+
+- **Efek Bernapas & Melayang (Weight)**: Karakter harus memiliki gerakan naik-turun halus secara terus-menerus di state `idle` untuk menunjukkan kehidupan/napas tanpa terlihat terlalu sibuk.
+- **Membal & Elastis (Squash & Stretch)**: Gerakan gembira (`happy` / `excited`) diekspresikan dengan memampat secara vertikal sebelum meregang tinggi saat melompat. Penyesuaian ini harus terasa elastis dan *cozy*, bukan kaku.
+- **Goyangan Organik (Swaying)**: Saat mengekspresikan emosi berpikir atau berjalan, terapkan efek goyangan lateral (*tilt*) yang lebih lebar pada bagian atas karakter dibanding bagian bawahnya.
+- **Partikel & Emote Melayang**: Gunakan partikel pixel art kecil atau balon gelembung emosi (seperti bintang, hati, atau tanda tanya) di atas kepala karakter untuk memperkuat ekspresi emosional LLM secara klasik.
 
 ---
 
-## 4. Logika Animasi & Fisika Deformasi (Dynamic Cozy Motion)
-Animasi tidak dibuat frame-by-frame, melainkan menggunakan transformasi matematika dinamis berbasis waktu (`time`):
-
-- **Breathing / Idle Floating**:
-  Gunakan fungsi gelombang `Math.sin(time)` dengan frekuensi lambat untuk membuat sprite naik-turun secara halus, melambangkan nafas atau efek melayang yang cozy.
-- **Squash & Stretch (Membal)**:
-  Saat melompat atau bergerak gembira (`happy` / `excited`), sprite harus memampat (menggepeng) di tanah sebelum melompat tinggi dan memanjang secara vertikal:
-  * Di tanah: `scaleY < 1.0`, `scaleX > 1.0` (squash).
-  * Di udara: `scaleY > 1.0`, `scaleX < 1.0` (stretch).
-- **Swaying / Tilting (Goyangan Organik)**:
-  Goyangan tubuh ke kiri/kanan (`tilt`) harus dihitung berdasarkan ketinggian pixel (`ry` relatif terhadap pivot). Bagian atas kepala bergoyang lebih lebar dibanding bagian bawah yang menempel di tanah:
-  * `tiltOffset = tilt * (Math.abs(ry) / height)`
-- **Emotional Particles**:
-  Gunakan partikel pixel kecil yang memancarkan energi emosi di sekitar sprite (seperti bintang naik untuk `excited`, tetesan air turun untuk `sad`, atau gelembung melayang untuk `sleeping`).
+## 4. Kustomisasi Fisiologi yang Fleksibel
+Karena fisik companion berbeda-beda:
+- Setiap companion mendefinisikan sendiri skema warna kustom (misal: warna topi untuk jamur vs warna bulu untuk kucing) dan opsi fisiknya (misal: tipe mata atau aksesoris) secara mandiri.
+- Settings Panel akan membaca parameter kustomisasi ini secara dinamis untuk merender kontrol UI yang sesuai.
