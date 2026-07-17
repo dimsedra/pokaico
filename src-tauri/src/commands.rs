@@ -710,6 +710,83 @@ pub async fn save_provider_config(
 }
 
 #[tauri::command]
+pub async fn save_api_key(
+    provider_id: String,
+    api_key: String,
+) -> Result<(), String> {
+    let settings_path = get_settings_file_path()?;
+    let config_dir = settings_path.parent().ok_or("Invalid path")?;
+    let provider_config_path = config_dir.join("provider-config.json");
+    
+    let mut config = if provider_config_path.exists() {
+        if let Ok(content) = fs::read_to_string(&provider_config_path) {
+            serde_json::from_str::<Value>(&content).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "apiKeys": {}
+                })
+            })
+        } else {
+            serde_json::json!({
+                "apiKeys": {}
+            })
+        }
+    } else {
+        serde_json::json!({
+            "apiKeys": {}
+        })
+    };
+
+    if config["apiKeys"].is_null() {
+        config["apiKeys"] = serde_json::json!({});
+    }
+
+    config["apiKeys"][provider_id] = serde_json::Value::String(api_key);
+
+    fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
+    fs::write(
+        &provider_config_path, 
+        serde_json::to_string_pretty(&config).unwrap()
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_api_key(
+    provider_id: String,
+) -> Result<(), String> {
+    let settings_path = get_settings_file_path()?;
+    let config_dir = settings_path.parent().ok_or("Invalid path")?;
+    let provider_config_path = config_dir.join("provider-config.json");
+    
+    if !provider_config_path.exists() {
+        return Ok(());
+    }
+    
+    let content = fs::read_to_string(&provider_config_path).map_err(|e| e.to_string())?;
+    let mut config: Value = serde_json::from_str(&content).unwrap_or_else(|_| {
+        serde_json::json!({
+            "apiKeys": {}
+        })
+    });
+
+    if !config["apiKeys"].is_null() && config["apiKeys"].is_object() {
+        if let Some(obj) = config["apiKeys"].as_object_mut() {
+            obj.remove(&provider_id);
+        }
+    }
+
+    fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
+    fs::write(
+        &provider_config_path, 
+        serde_json::to_string_pretty(&config).unwrap()
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+
+#[tauri::command]
 pub async fn save_enabled_models(
     provider_id: String,
     models: Vec<String>,

@@ -163,9 +163,56 @@ export default function App() {
         [providerId]: models
       }));
     } catch (err) {
-      console.error('Failed to save enabled models:', err);
+      console.error('Failed to enabled models:', err);
     }
   };
+
+  const handleSaveApiKey = async (providerId: string, apiKey: string) => {
+    setIsSavingConfig(true);
+    try {
+      await invoke('save_api_key', { providerId, apiKey });
+      setApiKeysMap((prev) => ({
+        ...prev,
+        [providerId]: apiKey
+      }));
+      updateCompanionState('excited', `Shroomy connected provider ${providerId}!`);
+    } catch (err) {
+      console.error('Failed to save API key:', err);
+      alert(`Failed to save API key: ${String(err)}`);
+      updateCompanionState('error', 'Shroomy failed to save the API key');
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
+  const handleDeleteApiKey = async (providerId: string) => {
+    setIsSavingConfig(true);
+    try {
+      await invoke('delete_api_key', { providerId });
+      setApiKeysMap((prev) => {
+        const next = { ...prev };
+        delete next[providerId];
+        return next;
+      });
+      
+      // Fallback active config if current chat or pipeline provider is disconnected
+      if (activeChatProvider === providerId) {
+        await handleSaveProviderConfig('chat', 'opencode-go', 'pokaico-local', '');
+      }
+      if (activePipelineProvider === providerId) {
+        await handleSaveProviderConfig('pipeline', 'opencode-go', 'pokaico-local', '');
+      }
+      
+      updateCompanionState('sad', `Shroomy disconnected provider ${providerId}.`);
+    } catch (err) {
+      console.error('Failed to delete API key:', err);
+      alert(`Failed to delete API key: ${String(err)}`);
+      updateCompanionState('error', 'Shroomy failed to delete the API key');
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
 
   // 2. Load messages for active session when selected
   useEffect(() => {
@@ -500,6 +547,8 @@ export default function App() {
             isSavingConfig={isSavingConfig}
             enabledModelsMap={enabledModelsMap}
             onSaveEnabledModels={handleSaveEnabledModels}
+            onSaveApiKey={handleSaveApiKey}
+            onDeleteApiKey={handleDeleteApiKey}
           />
         )}
       </div>
