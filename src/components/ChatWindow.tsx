@@ -205,83 +205,88 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       )}
 
-      {/* Messages Feed */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 scanlines">
-        {session.messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center text-rosepine-muted font-mono py-12">
-            <div className="border border-dashed border-rosepine-overlay p-4 rounded max-w-sm">
-              <Sparkles className="w-5 h-5 text-rosepine-rose mx-auto mb-2 animate-pulse" />
-              <p className="text-xs">
-                A blank canvas. Say hello to {companionName}! You can share your feelings, discuss your day, or even upload an image.
-              </p>
-            </div>
-          </div>
-        ) : (
-          session.messages.map((m) => {
-            const isUser = m.sender === 'user';
-            return (
-              <div
-                key={m.id}
-                className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-fadeIn`}
-              >
-                {/* Sender Tag Header */}
-                <span className="text-[10px] font-mono text-rosepine-muted mb-1.5 uppercase tracking-wider px-1">
-                  {isUser ? 'User' : companionName} • {m.timestamp}
-                </span>
-
-                {/* retro square message bubble */}
-                <div
-                  className={`max-w-xl p-4 border-4 rounded-md shadow-[3px_3px_0px_0px_var(--rosepine-overlay)] transition-transform duration-100 ${
-                    isUser
-                      ? 'bg-rosepine-overlay border-rosepine-subtle text-rosepine-text'
-                      : 'bg-rosepine-surface border-rosepine-overlay text-rosepine-text'
-                  }`}
-                >
-                  {/* Handle base64 image render inside retro message block */}
-                  {isUser && m.text.includes('[Attached Image]') && (
-                    <div className="mb-3 border-2 border-rosepine-overlay rounded overflow-hidden max-w-xs bg-rosepine-base">
-                      <div className="bg-rosepine-overlay/40 p-1 border-b border-rosepine-overlay flex items-center gap-1.5 text-[9px] font-mono text-rosepine-muted">
-                        <Image className="w-3 h-3 text-rosepine-gold" />
-                        DIRECT_LOG_IMAGE.PNG
-                      </div>
-                      <img
-                        src={`data:image/png;base64,${m.text.split('[Attached Image]')[1]?.trim()}`}
-                        alt="Uploaded log content"
-                        className="w-full h-auto"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                  )}
-
-                  <p className="text-sm font-mono leading-relaxed whitespace-pre-wrap">
-                    {renderTextWithEmojis(
-                      isUser && m.text.includes('[Attached Image]')
-                        ? m.text.split('[Attached Image]')[0]?.trim() || 'Attached an image.'
-                        : m.text
-                    )}
-                  </p>
-                </div>
+      {/* Messages Feed Wrapper */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Messages Feed */}
+        <div className="w-full h-full overflow-y-auto p-6 space-y-6">
+          {session.messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center text-rosepine-muted font-mono py-12">
+              <div className="border border-dashed border-rosepine-overlay p-4 rounded max-w-sm">
+                <Sparkles className="w-5 h-5 text-rosepine-rose mx-auto mb-2 animate-pulse" />
+                <p className="text-xs">
+                  A blank canvas. Say hello to {companionName}! You can share your feelings, discuss your day, or even upload an image.
+                </p>
               </div>
-            );
-          })
-        )}
-
-        {/* Dynamic Thinking/Loading message bubble */}
-        {isGenerating && (
-          <div className="flex flex-col items-start animate-fadeIn">
-            <span className="text-[10px] font-mono text-rosepine-gold mb-1.5 uppercase tracking-wider px-1 animate-pulse">
-              {companionName} is typing...
-            </span>
-            <div className="bg-rosepine-surface border-4 border-rosepine-gold p-4 rounded-md max-w-xs shadow-[3px_3px_0px_0px_var(--rosepine-overlay)] flex items-center gap-3">
-              <RefreshCw className="w-4 h-4 text-rosepine-gold animate-spin" />
-              <span className="text-xs font-mono text-rosepine-gold uppercase tracking-wider animate-pulse">
-                Accessing Memory Core
-              </span>
             </div>
-          </div>
-        )}
+          ) : (
+            session.messages.map((m) => {
+              const isUser = m.sender === 'user';
+              return (
+                <div
+                  key={m.id}
+                  className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-fadeIn`}
+                >
+                  {/* Sender Tag Header */}
+                  <span className="text-[10px] font-mono text-rosepine-muted mb-1.5 uppercase tracking-wider px-1">
+                    {isUser ? 'User' : companionName} • {m.timestamp}
+                  </span>
 
-        <div ref={messagesEndRef} />
+                  {/* retro square message bubble */}
+                  <div
+                    className={`max-w-xl p-4 border-4 rounded-md shadow-[3px_3px_0px_0px_var(--rosepine-overlay)] transition-transform duration-100 ${
+                      isUser
+                        ? 'bg-rosepine-overlay border-rosepine-subtle text-rosepine-text'
+                        : 'bg-rosepine-surface border-rosepine-overlay text-rosepine-text'
+                    }`}
+                  >
+                    {/* Handle base64 image render inside retro message block */}
+                    {isUser && m.text.includes('[Attached Image]') && (
+                      <div className="mb-3 border-2 border-rosepine-overlay rounded overflow-hidden max-w-xs bg-rosepine-base">
+                        <div className="bg-rosepine-overlay/40 p-1 border-b border-rosepine-overlay flex items-center gap-1.5 text-[9px] font-mono text-rosepine-muted">
+                          <Image className="w-3 h-3 text-rosepine-gold" />
+                          DIRECT_LOG_IMAGE.PNG
+                        </div>
+                        <img
+                          src={`data:image/png;base64,${m.text.split('[Attached Image]')[1]?.trim()}`}
+                          alt="Uploaded log content"
+                          className="w-full h-auto"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    )}
+
+                    <p className="text-sm font-mono leading-relaxed whitespace-pre-wrap">
+                      {renderTextWithEmojis(
+                        isUser && m.text.includes('[Attached Image]')
+                          ? m.text.split('[Attached Image]')[0]?.trim() || 'Attached an image.'
+                          : m.text
+                      )}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {/* Dynamic Thinking/Loading message bubble */}
+          {isGenerating && (
+            <div className="flex flex-col items-start animate-fadeIn">
+              <span className="text-[10px] font-mono text-rosepine-gold mb-1.5 uppercase tracking-wider px-1 animate-pulse">
+                {companionName} is typing...
+              </span>
+              <div className="bg-rosepine-surface border-4 border-rosepine-gold p-4 rounded-md max-w-xs shadow-[3px_3px_0px_0px_var(--rosepine-overlay)] flex items-center gap-3">
+                <RefreshCw className="w-4 h-4 text-rosepine-gold animate-spin" />
+                <span className="text-xs font-mono text-rosepine-gold uppercase tracking-wider animate-pulse">
+                  Accessing Memory Core
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+        {/* Static Scanline Overlay */}
+        <div className="pointer-events-none absolute inset-0 z-10 scanlines" />
       </div>
 
       {/* Upload image preview bar */}
