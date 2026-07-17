@@ -26,6 +26,8 @@ Setiap companion baru wajib menyamai tingkat detail dan kehalusan animasi yang d
   Animasi tidak boleh patah-patah (frame-by-frame kaku). Transisi antar gerakan dan deformasi visual harus berjalan sangat mulus dan interaktif pada **60 FPS** menggunakan kalkulasi waktu/trigonometri yang halus.
 - **Fidelity & Detail (Kerapian Pixel)**:
   Tingkat kerapian susunan pixel, shading volumetrik, highlight cahaya, dither, dan partikel emosi pendukung harus setara dengan detail Shroomy yang sudah ada. Karakter harus terlihat hidup dan berbobot di dalam terrarium.
+- **Reference Example (Contoh Rujukan)**:
+  Untuk mempermudah penulisan formula gerak, dithering, pencampuran warna gradasi, dan sistem partikel, developer/agent dapat merujuk langsung ke kode implementasi di [ShroomyCanvas.tsx](file:///d:/Project%20Hub/pokaico-ai/mockup/sprite/src/components/ShroomyCanvas.tsx) sebagai contoh konkret.
 
 ---
 
