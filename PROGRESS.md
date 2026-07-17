@@ -207,7 +207,7 @@ Reason: `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topi
 
 Temuan-temuan UI/UX yang perlu diperbaiki sebelum masuk Phase 6:
 
-- [ ] [#28](https://github.com/dimsedra/pokaico/issues/28) — **Settings refactor: Providers view + Models view** — Pemisahan concern antara provider connection management (connect/disconnect + API key) dan model toggle (enable/disable per provider). Mengikuti pendekatan OpenCode: API key disembunyikan saat provider connected, model hanya tampil untuk provider yang connected, role assignment (Chat/Pipeline) terpisah.
+- [x] [#28](https://github.com/dimsedra/pokaico/issues/28) — **Settings refactor: Providers view + Models view** — Pemisahan concern antara provider connection management (connect/disconnect + API key) dan model toggle (enable/disable per provider). Mengikuti pendekatan OpenCode: API key disembunyikan saat provider connected, model hanya tampil untuk provider yang connected, role assignment (Chat/Pipeline) terpisah.
 - [ ] [#29](https://github.com/dimsedra/pokaico/issues/29) — **Pixel-art emoji set** — Ganti emoji sistem default dengan set pixel-art custom. Asset file disediakan oleh user.
 - [ ] [#30](https://github.com/dimsedra/pokaico/issues/30) — **Markdown formatter untuk chat bubbles** — Render heading, bold, italic, code block, list, link, dll. di dalam chat bubble.
 - [ ] [#31](https://github.com/dimsedra/pokaico/issues/31) — **Copy/select text dari message bubble** — User saat ini tidak bisa select atau copy teks dari chat bubble.
