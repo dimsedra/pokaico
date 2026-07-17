@@ -205,14 +205,13 @@ Reason: `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topi
 
 ### Reopened — UI Polish & UX Improvements
 
-Temuan-temuan UI/UX yang perlu diperbaiki sebelum masuk Phase 6:
-
 - [x] [#28](https://github.com/dimsedra/pokaico/issues/28) — **Settings refactor: Providers view + Models view** — Pemisahan concern antara provider connection management (connect/disconnect + API key) dan model toggle (enable/disable per provider). Mengikuti pendekatan OpenCode: API key disembunyikan saat provider connected, model hanya tampil untuk provider yang connected, role assignment (Chat/Pipeline) terpisah.
 - [x] [#29](https://github.com/dimsedra/pokaico/issues/29) — **Pixel-art emoji set** — Ganti emoji sistem default dengan set pixel-art custom. Asset file disediakan oleh user.
-- [ ] [#30](https://github.com/dimsedra/pokaico/issues/30) — **Markdown formatter untuk chat bubbles** — Render heading, bold, italic, code block, list, link, dll. di dalam chat bubble.
+- [x] [#30](https://github.com/dimsedra/pokaico/issues/30) — **Markdown formatter untuk chat bubbles** — Render heading, bold, italic, code block, list, link, dll. di dalam chat bubble.
 - [ ] [#31](https://github.com/dimsedra/pokaico/issues/31) — **Copy/select text dari message bubble** — User saat ini tidak bisa select atau copy teks dari chat bubble.
 - [ ] [#32](https://github.com/dimsedra/pokaico/issues/32) — **Timestamp lokal (device time)** — Timestamp chat dan session saat ini default GMT+0, harus menggunakan timezone lokal user.
 - [ ] [#33](https://github.com/dimsedra/pokaico/issues/33) — **Session terbaru di atas sidebar** — Chat history sidebar harus menampilkan session terbaru di posisi paling atas (newest first).
+- [ ] [#37](https://github.com/dimsedra/pokaico/issues/37) — **Procedural Sprite Framework & New Shroomy Canvas** — Mengimplementasikan core framework sprite prosedural modular dan mengintegrasikan template Shroomy Canvas 64x64 baru ke RightSidebar.
 
 ---
 
@@ -273,3 +272,7 @@ Prefers solo hikes over group ones.
 **Placement:** Between `applyChanges` (Step 5) and `reindexTopics` (Step 6) in the pipeline.
 
 **Safety:** Consolidation is optional — if LLM call fails, skip and keep original content. LLM prompt guarantees all factual information is preserved. Provenance markers are never passed to the LLM.
+
+### Companion Character Templates (v0.2+) [OPEN — lihat issue #38]
+Menambahkan pilihan karakter companion baru selain Shroomy (misalnya Slimey, Kitty, dll.) menggunakan Procedural Sprite Framework yang telah dipersiapkan sebelumnya. Menyediakan UI pemilihan karakter di halaman Settings agar pengguna bisa mengganti companion aktif mereka.
+
