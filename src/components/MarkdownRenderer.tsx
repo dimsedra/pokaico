@@ -28,6 +28,10 @@ function parseEmojisInChildren(children: React.ReactNode): React.ReactNode {
       return renderTextWithEmojis(child);
     }
     if (React.isValidElement(child)) {
+      // Skip running emoji replacement inside code blocks (prevents [object Object] and keeps copy text pure)
+      if (child.type === 'code') {
+        return child;
+      }
       const props = child.props as any;
       if (props && props.children) {
         return React.cloneElement(child, {
@@ -235,15 +239,19 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
         ),
 
         // 5. Code block routing
-        code({ inline, className, children }: any) {
-          if (inline) {
+        code({ className, children }: any) {
+          const codeContent = String(children).replace(/\n$/, '');
+          const hasLang = /language-(\w+)/.test(className || '');
+          const hasNewline = codeContent.includes('\n');
+          const isBlock = hasLang || hasNewline;
+
+          if (!isBlock) {
             return (
               <code className="bg-rosepine-overlay px-1.5 py-0.5 rounded text-rosepine-love font-mono text-xs border border-rosepine-overlay/50">
                 {children}
               </code>
             );
           }
-          const codeContent = String(children).replace(/\n$/, '');
           const match = /language-(\w+)/.exec(className || '');
           if (match && match[1] === 'mermaid') {
             return <MermaidRenderer chart={codeContent} />;
