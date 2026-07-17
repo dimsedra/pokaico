@@ -286,7 +286,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           <div ref={messagesEndRef} />
         </div>
         {/* Static Scanline Overlay */}
-        <div className="pointer-events-none absolute inset-0 z-10 scanlines" />
+        <div 
+          className="pointer-events-none absolute inset-0 z-10 select-none" 
+          style={{
+            background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.12) 50%)',
+            backgroundSize: '100% 4px',
+          }}
+        />
       </div>
 
       {/* Upload image preview bar */}
