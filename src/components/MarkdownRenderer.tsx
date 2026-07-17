@@ -10,10 +10,10 @@ mermaid.initialize({
   theme: 'dark',
   securityLevel: 'loose',
   themeVariables: {
-    background: '#09090b',
+    background: '#1f1d2e',
     primaryColor: '#31748f',
     primaryTextColor: '#e0def4',
-    lineColor: '#26c6da',
+    lineColor: '#9ccfd8',
     secondaryColor: '#ebbcba',
     tertiaryColor: '#f6c177',
   }
@@ -56,19 +56,19 @@ function CodeBlock({ children, className }: { children: string; className?: stri
   };
 
   return (
-    <div className="my-4 overflow-hidden rounded-md border border-cyan-500/20 bg-zinc-950 font-mono text-xs w-full shadow-[0_0_8px_rgba(6,182,212,0.05)]">
+    <div className="my-4 overflow-hidden rounded border border-rosepine-overlay bg-rosepine-base/40 font-mono text-xs w-full shadow-[2px_2px_0px_0px_var(--rosepine-overlay)]">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-cyan-500/10 bg-zinc-900/40 px-4 py-1.5 text-zinc-400 select-none">
-        <span className="text-[10px] uppercase tracking-wider text-cyan-400/70 font-semibold">{language}</span>
+      <div className="flex items-center justify-between border-b border-rosepine-overlay/40 bg-rosepine-overlay/10 px-4 py-1.5 text-rosepine-muted select-none">
+        <span className="text-[10px] uppercase tracking-wider text-rosepine-gold/80 font-bold">{language}</span>
         <button 
           onClick={handleCopy}
-          className="hover:text-cyan-400 active:scale-95 transition-all duration-150 cursor-pointer font-bold text-[10px]"
+          className="text-rosepine-muted hover:text-rosepine-rose active:scale-95 transition-all duration-150 cursor-pointer font-bold text-[10px]"
         >
           {copied ? 'COPIED!' : 'COPY'}
         </button>
       </div>
       {/* Code pre area */}
-      <pre className="overflow-x-auto p-4 leading-relaxed text-zinc-300 scrollbar-thin scrollbar-thumb-cyan-500/10 select-text">
+      <pre className="overflow-x-auto p-4 leading-relaxed text-rosepine-text select-text scrollbar-thin scrollbar-thumb-rosepine-overlay/30">
         <code>{children}</code>
       </pre>
     </div>
@@ -124,7 +124,7 @@ function MermaidRenderer({ chart }: { chart: string }) {
 
   return (
     <div 
-      className="my-4 overflow-x-auto p-4 rounded-md border border-cyan-500/10 bg-zinc-950/40 flex justify-center w-full"
+      className="my-4 overflow-x-auto p-4 rounded border border-rosepine-overlay bg-rosepine-base/40 flex justify-center w-full shadow-[2px_2px_0px_0px_var(--rosepine-overlay)]"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
