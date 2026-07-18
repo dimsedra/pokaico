@@ -318,7 +318,7 @@ pub fn list_conversations() -> Result<Vec<ChatSessionMeta>, String> {
         return Ok(Vec::new());
     }
 
-    let mut sessions = Vec::new();
+    let mut temp_sessions = Vec::new();
     let entries = fs::read_dir(conv_dir).map_err(|e| e.to_string())?;
     for entry in entries {
         if let Ok(entry) = entry {
@@ -328,6 +328,10 @@ pub fn list_conversations() -> Result<Vec<ChatSessionMeta>, String> {
                     if let Some((fm, _)) = parse_frontmatter(&content) {
                         let session_id = fm.get("session_id").cloned().unwrap_or_default();
                         let started_at = fm.get("started_at").cloned().unwrap_or_default();
+                        let last_active = fm.get("last_active_at")
+                            .or_else(|| fm.get("started_at"))
+                            .cloned()
+                            .unwrap_or_default();
                         
                         // Parse readable date from started_at
                         let date_str = started_at.split('T').next().unwrap_or("").to_string();
@@ -347,11 +351,14 @@ pub fn list_conversations() -> Result<Vec<ChatSessionMeta>, String> {
                         }
 
                         if !session_id.is_empty() {
-                            sessions.push(ChatSessionMeta {
-                                id: session_id,
-                                title,
-                                created_at: date_str,
-                            });
+                            temp_sessions.push((
+                                ChatSessionMeta {
+                                    id: session_id,
+                                    title,
+                                    created_at: date_str,
+                                },
+                                last_active,
+                            ));
                         }
                     }
                 }
@@ -359,9 +366,10 @@ pub fn list_conversations() -> Result<Vec<ChatSessionMeta>, String> {
         }
     }
 
-    // Sort conversations descending by ID (which has mtime date format)
-    sessions.sort_by(|a, b| b.id.cmp(&a.id));
-    Ok(sessions)
+    // Sort conversations descending by last_active (newest first)
+    temp_sessions.sort_by(|a, b| b.1.cmp(&a.1));
+    let sorted_sessions = temp_sessions.into_iter().map(|(meta, _)| meta).collect();
+    Ok(sorted_sessions)
 }
 
 #[tauri::command]
