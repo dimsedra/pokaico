@@ -276,3 +276,7 @@ Prefers solo hikes over group ones.
 ### Companion Character Templates (v0.2+) [OPEN — lihat issue #38]
 Menambahkan pilihan karakter companion baru selain Shroomy (misalnya Slimey, Kitty, dll.) menggunakan Procedural Sprite Framework yang telah dipersiapkan sebelumnya. Menyediakan UI pemilihan karakter di halaman Settings agar pengguna bisa mengganti companion aktif mereka.
 
+### Pin conversation sessions di history sidebar [OPEN — lihat issue #40]
+Menyediakan fitur untuk menyematkan (pin) obrolan-obrolan penting ke bagian atas sidebar history. Sesi yang di-pin akan selalu berada di baris teratas dan diurutkan berdasarkan waktu aktivitas, diikuti oleh obrolan yang tidak di-pin.
+
+
