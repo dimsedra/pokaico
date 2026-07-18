@@ -141,3 +141,10 @@
 .animate-shroom-pulse {
   animation: shroom-pulse 2s ease-in-out infinite;
 }
+
+/* Cozy theme selection colors */
+::selection {
+  background-color: var(--rosepine-highlight-med);
+  color: var(--rosepine-gold);
+}
+

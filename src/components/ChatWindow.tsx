@@ -53,9 +53,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   
   // Local state for image upload preview
   const [uploadedImage, setUploadedImage] = useState<{ base64: string; mime: string } | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  const handleCopyMessage = async (messageId: string, rawText: string) => {
+    try {
+      const textToCopy = rawText.includes('[Attached Image]')
+        ? rawText.split('[Attached Image]')[0]?.trim() || 'Attached an image.'
+        : rawText;
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy message:', err);
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
 
   useEffect(() => {
     if (session) {
@@ -227,13 +242,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-fadeIn`}
                 >
                   {/* Sender Tag Header */}
-                  <span className="text-[10px] font-mono text-rosepine-muted mb-1.5 uppercase tracking-wider px-1">
-                    {isUser ? 'User' : companionName} • {m.timestamp}
-                  </span>
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-rosepine-muted mb-1.5 uppercase tracking-wider px-1 select-none">
+                    <span>{isUser ? 'User' : companionName} • {m.timestamp}</span>
+                    <span>•</span>
+                    <button
+                      onClick={() => handleCopyMessage(m.id, m.text)}
+                      className="hover:text-rosepine-rose transition-colors duration-150 cursor-pointer uppercase font-bold text-[9px] border-b border-dashed border-rosepine-muted hover:border-rosepine-rose"
+                    >
+                      {copiedMessageId === m.id ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
 
                   {/* retro square message bubble */}
                   <div
-                    className={`max-w-xl p-4 border-4 rounded-md shadow-[3px_3px_0px_0px_var(--rosepine-overlay)] transition-transform duration-100 ${
+                    className={`max-w-xl p-4 border-4 rounded-md shadow-[3px_3px_0px_0px_var(--rosepine-overlay)] transition-transform duration-100 select-text ${
                       isUser
                         ? 'bg-rosepine-overlay border-rosepine-subtle text-rosepine-text'
                         : 'bg-rosepine-surface border-rosepine-overlay text-rosepine-text'
