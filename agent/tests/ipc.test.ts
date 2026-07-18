@@ -254,4 +254,66 @@ describe("startIPCListener", () => {
     expect(files).toHaveLength(1);
     expect(files[0]).toBe(`2026-01-01-${sessionId}.md`);
   });
+
+  it("verifies local timezone timestamps in created session files and parsed conversation session turns", async () => {
+    const stdin = new MockReadable();
+    const stdout = new MockWritable();
+    const mockAgent = {
+      generate: vi.fn().mockResolvedValue({
+        text: "Response from Pokai!",
+        steps: [],
+      }),
+    } as any;
+    const runPipeline = vi.fn().mockResolvedValue({ success: true });
+
+    const listener = startIPCListener({
+      stdin,
+      stdout,
+      getAgent: () => mockAgent,
+      conversationDir,
+      runPipeline,
+      getModelName: () => "google/gemini-1.5-flash",
+    });
+    activeListeners.push(listener);
+
+    // 1. Send chat message
+    stdin.pushLine(JSON.stringify({
+      id: "req-local-tz",
+      command: "chat",
+      args: {
+        message: "Hello timezone test",
+        sessionId: "session-local-tz",
+      },
+    }));
+
+    await stdout.waitForLine();
+
+    // 2. Read the created markdown file
+    const files = readdirSync(conversationDir);
+    const createdFile = files.find(f => f.includes("session-local-tz"));
+    expect(createdFile).toBeDefined();
+    const filePath = join(conversationDir, createdFile!);
+    const markdownContent = readFileSync(filePath, "utf-8");
+
+    // Extract time from ## [HH:mm:ss] User
+    const match = markdownContent.match(/##\s+\[(\d{2}:\d{2}:\d{2})\]\s+User/);
+    expect(match).not.toBeNull();
+    const fileTimestamp = match![1];
+
+    // Verify it matches current local time (HH:mm:ss) within a few seconds tolerance
+    const localNow = new Date();
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const expectedLocalTime = `${pad(localNow.getHours())}:${pad(localNow.getMinutes())}`;
+    
+    // Check hours and minutes to avoid flaky tests on second transitions
+    expect(fileTimestamp.slice(0, 5)).toBe(expectedLocalTime);
+
+    // 3. Re-read and parse conversation content to simulate switching session and loading back
+    const { parseConversationContent } = await import("../src/memory/conversation");
+    const parsedSession = parseConversationContent(markdownContent);
+
+    expect(parsedSession.turns).toHaveLength(2); // User + Pokai
+    expect(parsedSession.turns[0].timestamp).toBe(fileTimestamp);
+    expect(parsedSession.turns[0].timestamp.slice(0, 5)).toBe(expectedLocalTime);
+  });
 });
