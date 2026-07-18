@@ -426,6 +426,35 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
 const getIs12HourCountry = (): boolean => {
   try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) {
+      const lowerTz = tz.toLowerCase();
+      // Check Malaysia
+      if (lowerTz.includes('kuala_lumpur') || lowerTz.includes('kuching')) return true;
+      // Check Philippines
+      if (lowerTz.includes('manila')) return true;
+      // Check India
+      if (lowerTz.includes('kolkata')) return true;
+      // Check United Kingdom
+      if (lowerTz.includes('london') || lowerTz.includes('belfast')) return true;
+      // Check New Zealand
+      if (lowerTz.includes('auckland') || lowerTz.includes('chatham')) return true;
+      // Check Australia
+      if (lowerTz.startsWith('australia/') || lowerTz.includes('lord_howe')) return true;
+      // Check Canada
+      const canadaCities = ['toronto', 'vancouver', 'edmonton', 'winnipeg', 'halifax', 'st_johns', 'regina'];
+      if (canadaCities.some(city => lowerTz.includes(city))) return true;
+      // Check United States
+      const usCities = ['new_york', 'chicago', 'denver', 'los_angeles', 'phoenix', 'anchorage', 'honolulu', 'adak', 'metlakatla'];
+      if (usCities.some(city => lowerTz.includes(city)) || lowerTz.startsWith('us/')) return true;
+      
+      // If we resolved a timezone and it did NOT match any of the above, it's not a 12-hour country.
+      return false;
+    }
+  } catch (e) {}
+
+  // Fallback to navigator languages only if timezone could not be resolved
+  try {
     const languages = navigator.languages || [navigator.language];
     const amPmCountries = ['US', 'CA', 'GB', 'AU', 'NZ', 'PH', 'IN', 'MY'];
     for (const lang of languages) {
