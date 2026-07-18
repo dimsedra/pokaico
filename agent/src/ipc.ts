@@ -34,6 +34,18 @@ export function findConversationFile(conversationDir: string, sessionId: string)
   return null;
 }
 
+function getLocalISOString(): string {
+  const tzoffset = new Date().getTimezoneOffset() * 60000;
+  const localISOTime = new Date(Date.now() - tzoffset).toISOString().slice(0, -1);
+  const offset = new Date().getTimezoneOffset();
+  const absOffset = Math.abs(offset);
+  const sign = offset <= 0 ? "+" : "-";
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const offsetHours = pad(Math.floor(absOffset / 60));
+  const offsetMinutes = pad(absOffset % 60);
+  return `${localISOTime}${sign}${offsetHours}:${offsetMinutes}`;
+}
+
 export function createConversationSessionFile(
   conversationDir: string,
   sessionId: string,
@@ -44,15 +56,15 @@ export function createConversationSessionFile(
     return existing;
   }
 
-  const dateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const localISO = getLocalISOString();
+  const dateStr = localISO.split("T")[0]; // YYYY-MM-DD
   const filename = `${dateStr}-${sessionId}.md`;
   const filePath = join(conversationDir, filename);
 
-  const startedAt = new Date().toISOString();
   const frontmatter = `---
 session_id: ${sessionId}
-started_at: ${startedAt}
-last_active_at: ${startedAt}
+started_at: ${localISO}
+last_active_at: ${localISO}
 model: ${modelName}
 extracted: false
 ---
