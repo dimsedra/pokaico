@@ -243,7 +243,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 >
                   {/* Sender Tag Header */}
                   <div className="flex items-center gap-2 text-[10px] font-mono text-rosepine-muted mb-1.5 uppercase tracking-wider px-1 select-none">
-                    <span>{isUser ? 'User' : companionName} • {m.timestamp}</span>
+                    <span>{isUser ? 'User' : companionName} • {formatMessageTime(m.timestamp)}</span>
                     <span>•</span>
                     <button
                       onClick={() => handleCopyMessage(m.id, m.text)}
@@ -423,3 +423,45 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     </div>
   );
 };
+
+const getIs12HourCountry = (): boolean => {
+  try {
+    const languages = navigator.languages || [navigator.language];
+    const amPmCountries = ['US', 'CA', 'GB', 'AU', 'NZ', 'PH', 'IN', 'MY'];
+    for (const lang of languages) {
+      if (!lang) continue;
+      const parts = lang.split('-');
+      if (parts.length > 1) {
+        const country = parts[1].toUpperCase();
+        if (amPmCountries.includes(country)) {
+          return true;
+        }
+      }
+    }
+  } catch (e) {}
+  return false;
+};
+
+export const formatMessageTime = (timeStr: string): string => {
+  if (!timeStr) return '';
+  
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+
+  const hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  
+  if (isNaN(hours)) return timeStr;
+
+  const is12Hour = getIs12HourCountry();
+
+  if (is12Hour) {
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes} ${ampm}`;
+  } else {
+    const displayHours = hours.toString().padStart(2, '0');
+    return `${displayHours}:${minutes}`;
+  }
+};
+

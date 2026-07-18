@@ -184,8 +184,8 @@ describe("ProviderRegistry - Slice 4 (Active Model Validation & Resolution)", ()
     const registry = new ProviderRegistry(tempConfigPath);
     await registry.load(); // empty config
 
-    expect(() => registry.resolveActiveModel()).toThrow("No model configured");
-    expect(() => registry.resolveActiveModelInstance()).toThrow("No model configured");
+    expect(() => registry.resolveActiveChatModel()).toThrow("No chat model configured");
+    expect(() => registry.resolveActiveChatModelInstance()).toThrow("No chat model configured");
   });
 
   it("should return provider/model string if active model is configured", async () => {
@@ -196,7 +196,7 @@ describe("ProviderRegistry - Slice 4 (Active Model Validation & Resolution)", ()
       apiKeys: { google: "key-123" }
     });
 
-    const activeModelStr = registry.resolveActiveModel();
+    const activeModelStr = registry.resolveActiveChatModel();
     expect(activeModelStr).toBe("google/gemini-1.5-flash");
   });
 
@@ -208,7 +208,7 @@ describe("ProviderRegistry - Slice 4 (Active Model Validation & Resolution)", ()
       apiKeys: { google: "key-123" }
     });
 
-    const instance = registry.resolveActiveModelInstance();
+    const instance = registry.resolveActiveChatModelInstance();
     expect(instance).toBeDefined();
     // ModelRouterLanguageModel has modelId, provider, and gatewayId
     expect(instance.modelId).toBe("gemini-1.5-flash");

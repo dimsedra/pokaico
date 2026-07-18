@@ -163,8 +163,8 @@ export function startIPCListener(deps: {
       // 1. Create/Ensure conversation file exists
       const filePath = createConversationSessionFile(conversationDir, sessionId, getModelName());
 
-      // 2. Append User turn (use UTC HH:mm:ss to prevent timezone discrepancies)
-      const userTimestamp = new Date().toISOString().slice(11, 19);
+      // 2. Append User turn (use local HH:mm:ss)
+      const userTimestamp = new Date().toTimeString().slice(0, 8);
       const userTurn: ConversationTurn = {
         timestamp: userTimestamp,
         role: "user",
@@ -205,7 +205,7 @@ export function startIPCListener(deps: {
                   ? JSON.stringify(rawResult, null, 2)
                   : String(rawResult);
 
-              const toolTimestamp = new Date().toISOString().slice(11, 19);
+              const toolTimestamp = new Date().toTimeString().slice(0, 8);
               const toolTurn: ConversationTurn = {
                 timestamp: toolTimestamp,
                 role: "tool",
@@ -220,7 +220,7 @@ export function startIPCListener(deps: {
 
       // 5. Append Assistant (Pokai) turn
       const agentResponseText = result.text || "";
-      const agentTimestamp = new Date().toISOString().slice(11, 19);
+      const agentTimestamp = new Date().toTimeString().slice(0, 8);
       const agentTurn: ConversationTurn = {
         timestamp: agentTimestamp,
         role: "pokai",

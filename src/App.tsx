@@ -15,6 +15,12 @@ const INITIAL_MEMORIES: MemoryItem[] = [
   { id: 'm3', category: 'feeling', details: 'Finds comfort in steady rain sounds', learnedAt: 'Jul 15, 2026' }
 ];
 
+const getLocalRawTime = (): string => {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+};
+
 export default function App() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -331,10 +337,7 @@ export default function App() {
     isSubmitting.current = true;
     setIsGenerating(true);
 
-    const timeString = new Date().toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit'
-    });
+    const timeString = getLocalRawTime();
 
     const userMsg: Message = {
       id: `msg-${Date.now()}-user`,
@@ -360,7 +363,7 @@ export default function App() {
         id: `msg-${Date.now()}-pokai`,
         sender: 'pokaico',
         text: res.response,
-        timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        timestamp: getLocalRawTime()
       };
 
       // Append assistant response
@@ -395,7 +398,7 @@ export default function App() {
         id: `msg-${Date.now()}-error`,
         sender: 'pokaico',
         text: `[Error Connection] Shroomy is offline. Please check active API key or provider status. Details: ${String(err)}`,
-        timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        timestamp: getLocalRawTime()
       };
 
       setSessions((prev) =>
