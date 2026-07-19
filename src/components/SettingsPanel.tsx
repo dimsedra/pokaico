@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Settings, Shield, HardDrive, Volume2, VolumeX, Moon, Sun, Download, Trash2, RefreshCw, Smile, Cloud, Sparkles, Cpu, Search } from 'lucide-react';
-import { CompanionState } from '../types';
+import { Settings, Shield, HardDrive, Volume2, VolumeX, Moon, Sun, Download, Trash2, RefreshCw, Smile, Cloud, Sparkles, Cpu, Search, Palette } from 'lucide-react';
+import { CompanionState, CustomizationOptions } from '../types';
+import { shroomyTemplate } from './sprites/shroomy';
+import { ProceduralSpriteCanvas } from './ProceduralSpriteCanvas';
 
 interface SettingsPanelProps {
   theme: 'dark' | 'light';
@@ -49,9 +51,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onSaveApiKey,
   onDeleteApiKey
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'general' | 'providers' | 'models' | 'cores'>('general');
+  const [activeSubTab, setActiveSubTab] = useState<'general' | 'companion' | 'providers' | 'models' | 'cores'>('general');
   const [nameInput, setNameInput] = useState(companionState.name);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const [spriteOptions, setSpriteOptions] = useState<CustomizationOptions>(() => {
+    try {
+      const saved = localStorage.getItem('pokaico_sprite_options');
+      return saved ? JSON.parse(saved) : shroomyTemplate.defaultOptions;
+    } catch {
+      return shroomyTemplate.defaultOptions;
+    }
+  });
+
+  const handleUpdateSpriteOption = (key: string, value: any) => {
+    const updated = { ...spriteOptions, [key]: value };
+    setSpriteOptions(updated);
+    try {
+      localStorage.setItem('pokaico_sprite_options', JSON.stringify(updated));
+      window.dispatchEvent(new Event('pokaico_sprite_options_updated'));
+    } catch (e) {}
+  };
+
+  const handleResetSpriteOptions = () => {
+    setSpriteOptions(shroomyTemplate.defaultOptions);
+    try {
+      localStorage.setItem('pokaico_sprite_options', JSON.stringify(shroomyTemplate.defaultOptions));
+      window.dispatchEvent(new Event('pokaico_sprite_options_updated'));
+    } catch (e) {}
+  };
   const [isPlayingLofi, setIsPlayingLofi] = useState(false);
   const [lofiVolume, setLofiVolume] = useState(50);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
@@ -210,6 +238,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           >
             <Smile className="w-4 h-4" />
             GENERAL
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('companion')}
+            className={`w-full flex items-center gap-2 px-3 py-2 border-2 rounded text-xs font-press text-left cursor-pointer transition-colors ${
+              activeSubTab === 'companion'
+                ? 'border-rosepine-iris bg-rosepine-overlay text-rosepine-iris'
+                : 'border-transparent bg-transparent hover:bg-rosepine-overlay/40 text-rosepine-muted'
+            }`}
+          >
+            <Palette className="w-4 h-4" />
+            COMPANION
           </button>
           
           <button
@@ -379,6 +419,114 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeSubTab === 'companion' && (
+            <div className="space-y-6">
+              <div className="bg-rosepine-base/40 border-2 border-rosepine-overlay rounded p-4 flex gap-6 items-center">
+                <div className="w-40 h-40 bg-rosepine-base border-4 border-rosepine-overlay rounded flex flex-col items-center justify-center p-2 relative overflow-hidden flex-shrink-0">
+                  <div className="absolute bottom-0 left-0 right-0 h-4 bg-rosepine-pine/20 border-t border-rosepine-pine/40" />
+                  <ProceduralSpriteCanvas
+                    template={shroomyTemplate}
+                    expression="happy"
+                    options={spriteOptions}
+                    size={140}
+                    className="z-10"
+                  />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <h3 className="text-lg font-press text-rosepine-rose flex items-center gap-2">
+                    <Palette className="w-5 h-5 text-rosepine-rose" />
+                    COMPANION CUSTOMIZATION
+                  </h3>
+                  <p className="text-xs text-rosepine-muted font-mono leading-relaxed">
+                    Personalize your cozy companion's procedural 64x64 pixel aesthetics. All color choices and style choices update live and persist automatically across sessions.
+                  </p>
+                  <button
+                    onClick={handleResetSpriteOptions}
+                    className="px-3 py-1.5 border border-rosepine-overlay bg-rosepine-base hover:bg-rosepine-overlay text-rosepine-muted hover:text-rosepine-rose text-[10px] font-press rounded transition-colors cursor-pointer"
+                  >
+                    RESET TO DEFAULTS
+                  </button>
+                </div>
+              </div>
+
+              {Object.entries(
+                shroomyTemplate.customizationSchema.reduce((acc, field) => {
+                  const cat = field.category || 'General';
+                  if (!acc[cat]) acc[cat] = [];
+                  acc[cat].push(field);
+                  return acc;
+                }, {} as Record<string, typeof shroomyTemplate.customizationSchema>)
+              ).map(([categoryName, fields]) => (
+                <div key={categoryName} className="bg-rosepine-base/30 border-2 border-rosepine-overlay rounded p-4 space-y-4">
+                  <h4 className="text-xs font-press uppercase tracking-wider text-rosepine-gold border-b border-rosepine-overlay pb-2">
+                    {categoryName}
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    {fields.map((field) => {
+                      const currentValue = spriteOptions[field.id] ?? field.defaultValue;
+                      return (
+                        <div key={field.id} className="flex flex-col gap-1 bg-rosepine-base/50 p-2.5 rounded border border-rosepine-overlay/40">
+                          <label className="text-[10px] font-press text-rosepine-text flex items-center justify-between">
+                            <span>{field.label}</span>
+                            {field.type === 'color' && (
+                              <span className="font-mono text-[9px] text-rosepine-muted uppercase">{currentValue}</span>
+                            )}
+                          </label>
+
+                          {field.type === 'color' && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <input
+                                type="color"
+                                value={currentValue}
+                                onChange={(e) => handleUpdateSpriteOption(field.id, e.target.value)}
+                                className="w-8 h-8 rounded border-2 border-rosepine-overlay cursor-pointer bg-transparent"
+                              />
+                              <input
+                                type="text"
+                                value={currentValue}
+                                onChange={(e) => handleUpdateSpriteOption(field.id, e.target.value)}
+                                className="flex-1 bg-rosepine-base border border-rosepine-overlay rounded px-2 py-1 text-xs font-mono"
+                              />
+                            </div>
+                          )}
+
+                          {field.type === 'select' && (
+                            <select
+                              value={currentValue}
+                              onChange={(e) => handleUpdateSpriteOption(field.id, e.target.value)}
+                              className="bg-rosepine-base border border-rosepine-overlay rounded px-2 py-1.5 text-xs font-mono mt-1 text-rosepine-text cursor-pointer"
+                            >
+                              {field.options?.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+
+                          {field.type === 'number' && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <input
+                                type="range"
+                                min={field.min ?? 0.1}
+                                max={field.max ?? 3.0}
+                                step={field.step ?? 0.1}
+                                value={currentValue}
+                                onChange={(e) => handleUpdateSpriteOption(field.id, parseFloat(e.target.value))}
+                                className="flex-1 accent-rosepine-rose cursor-pointer"
+                              />
+                              <span className="text-xs font-mono w-8 text-right">{currentValue}x</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 

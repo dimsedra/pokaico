@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DiaryEntry, CompanionState } from '../types';
-import { ShroomSprite } from './ShroomSprite';
+import { shroomyTemplate } from './sprites/shroomy';
+import { ProceduralSpriteCanvas } from './ProceduralSpriteCanvas';
 import { BookOpen, Plus, Calendar, RefreshCw, X } from 'lucide-react';
 
 interface RightSidebarProps {
@@ -17,6 +18,31 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   isTriggeringDiary
 }) => {
   const [selectedDiary, setSelectedDiary] = useState<DiaryEntry | null>(null);
+
+  // Load custom sprite options and sync dynamically
+  const [spriteOptions, setSpriteOptions] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pokaico_sprite_options');
+      return saved ? JSON.parse(saved) : shroomyTemplate.defaultOptions;
+    } catch {
+      return shroomyTemplate.defaultOptions;
+    }
+  });
+
+  useEffect(() => {
+    const handleStorage = () => {
+      try {
+        const saved = localStorage.getItem('pokaico_sprite_options');
+        if (saved) setSpriteOptions(JSON.parse(saved));
+      } catch {}
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('pokaico_sprite_options_updated', handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('pokaico_sprite_options_updated', handleStorage);
+    };
+  }, []);
 
   // EXP progress percentage
   const expPercent = Math.min(100, Math.max(0, (companionState.exp / 100) * 100));
@@ -35,10 +61,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
           {/* Grassy floor base inside terrarium */}
           <div className="absolute bottom-0 left-0 right-0 h-4 bg-rosepine-pine/20 border-t border-rosepine-pine/40" />
           
-          <ShroomSprite 
+          <ProceduralSpriteCanvas 
+            template={shroomyTemplate}
             expression={companionState.expression} 
-            size={120} 
-            className="z-10"
+            options={spriteOptions}
+            size={160} 
+            className="z-10 cursor-pointer hover:scale-105 transition-transform duration-200"
           />
 
           {/* Current Expression Label Tag */}
