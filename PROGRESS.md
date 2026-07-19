@@ -212,6 +212,7 @@ Reason: `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topi
 - [x] [#32](https://github.com/dimsedra/pokaico/issues/32) — **Timestamp lokal (device time)** — Timestamp chat dan session saat ini default GMT+0, harus menggunakan timezone lokal user.
 - [x] [#33](https://github.com/dimsedra/pokaico/issues/33) — **Session terbaru di atas sidebar** — Chat history sidebar harus menampilkan session terbaru di posisi paling atas (newest first).
 - [x] [#37](https://github.com/dimsedra/pokaico/issues/37) — **Procedural Sprite Framework & New Shroomy Canvas** — Mengimplementasikan core framework sprite prosedural modular dan mengintegrasikan template Shroomy Canvas 64x64 baru ke RightSidebar.
+- [x] [#39](https://github.com/dimsedra/pokaico/issues/39) — **Deep Integration of Companion Expressions with LLM Responses** — Mengintegrasikan ekspresi companion dan moodText secara dinamis berdasarkan respons LLM menggunakan Pola Hybrid JSON-Suffix-Block dengan fallback anti-crash.
 
 ---
 

@@ -230,13 +230,15 @@ export function startIPCListener(deps: {
         }
       }
 
-      // 5. Append Assistant (Pokai) turn
-      const agentResponseText = result.text || "";
+      // 5. Extract & strip Companion Emotion metadata from response
+      const rawText = result.text || "";
+      const { cleanText, expression, moodText } = extractCompanionEmotion(rawText);
+
       const agentTimestamp = new Date().toTimeString().slice(0, 8);
       const agentTurn: ConversationTurn = {
         timestamp: agentTimestamp,
         role: "pokai",
-        content: agentResponseText,
+        content: cleanText,
       };
       appendTurn(filePath, agentTurn);
 
@@ -246,7 +248,9 @@ export function startIPCListener(deps: {
           id: msgId,
           success: true,
           data: {
-            response: agentResponseText,
+            response: cleanText,
+            expression,
+            moodText,
           },
         }) + "\n"
       );
@@ -268,4 +272,51 @@ export function startIPCListener(deps: {
   });
 
   return rl;
+}
+
+export interface ExtractedEmotion {
+  cleanText: string;
+  expression: string;
+  moodText: string;
+}
+
+const VALID_EXPRESSIONS = new Set(["idle", "happy", "excited", "surprised", "thinking", "sad"]);
+
+export function extractCompanionEmotion(rawText: string): ExtractedEmotion {
+  let cleanText = rawText || "";
+  let expression = "idle";
+  let moodText = "Shroomy is listening";
+
+  const emotionBlockRegex = /```json-emotion\s*([\s\S]*?)\s*```/g;
+  let match: RegExpExecArray | null = null;
+
+  let lastJsonStr: string | null = null;
+  while ((match = emotionBlockRegex.exec(rawText)) !== null) {
+    lastJsonStr = match[1];
+  }
+
+  // Strip all ```json-emotion ... ``` blocks
+  cleanText = cleanText.replace(emotionBlockRegex, "").trim();
+
+  // Strip dangling unclosed ```json-emotion defensives
+  cleanText = cleanText.replace(/```json-emotion[\s\S]*$/, "").trim();
+
+  if (lastJsonStr) {
+    try {
+      const parsed = JSON.parse(lastJsonStr);
+      if (parsed && typeof parsed === "object") {
+        if (typeof parsed.expression === "string" && VALID_EXPRESSIONS.has(parsed.expression.toLowerCase())) {
+          expression = parsed.expression.toLowerCase();
+        }
+        if (typeof parsed.moodText === "string" && parsed.moodText.trim()) {
+          moodText = parsed.moodText.trim();
+        }
+      }
+    } catch {
+      expression = "idle";
+      moodText = "Shroomy is listening";
+    }
+  }
+
+  return { cleanText, expression, moodText };
 }

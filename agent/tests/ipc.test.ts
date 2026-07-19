@@ -3,7 +3,7 @@ import { Readable, Writable } from "node:stream";
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { startIPCListener, createConversationSessionFile } from "../src/ipc";
+import { startIPCListener, createConversationSessionFile, extractCompanionEmotion } from "../src/ipc";
 
 class MockReadable extends Readable {
   _read() {}
@@ -315,5 +315,46 @@ describe("startIPCListener", () => {
     expect(parsedSession.turns).toHaveLength(2); // User + Pokai
     expect(parsedSession.turns[0].timestamp).toBe(fileTimestamp);
     expect(parsedSession.turns[0].timestamp.slice(0, 5)).toBe(expectedLocalTime);
+  });
+
+  it("extracts json-emotion block cleanly and strips it from response text", () => {
+    const rawInput = `Hello there! I am excited to help you.
+
+\`\`\`json-emotion
+{
+  "expression": "excited",
+  "moodText": "Shroomy is thrilled!"
+}
+\`\`\``;
+
+    const result = extractCompanionEmotion(rawInput);
+    expect(result.cleanText).toBe("Hello there! I am excited to help you.");
+    expect(result.expression).toBe("excited");
+    expect(result.moodText).toBe("Shroomy is thrilled!");
+  });
+
+  it("handles malformed json-emotion gracefully without crashing (fallback safeguard)", () => {
+    const rawInput = `Here is my answer.
+
+\`\`\`json-emotion
+{
+  "expression": "happy",
+  "moodText": "Shroomy is happy",
+}
+\`\`\``;
+
+    const result = extractCompanionEmotion(rawInput);
+    expect(result.cleanText).toBe("Here is my answer.");
+    expect(result.expression).toBe("idle");
+    expect(result.moodText).toBe("Shroomy is listening");
+  });
+
+  it("handles missing json-emotion block gracefully", () => {
+    const rawInput = "Plain markdown response with no emotion block.";
+
+    const result = extractCompanionEmotion(rawInput);
+    expect(result.cleanText).toBe("Plain markdown response with no emotion block.");
+    expect(result.expression).toBe("idle");
+    expect(result.moodText).toBe("Shroomy is listening");
   });
 });

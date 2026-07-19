@@ -354,7 +354,7 @@ export default function App() {
     updateCompanionState('thinking', 'Shroomy is looking through memories...');
 
     try {
-      const res = await invoke<{ response: string }>('chat', {
+      const res = await invoke<{ response: string; expression?: ExpressionType; moodText?: string }>('chat', {
         message: text,
         sessionId: activeSessionId
       });
@@ -371,16 +371,11 @@ export default function App() {
         prev.map((s) => (s.id === activeSessionId ? { ...s, messages: [...s.messages, pokaiMsg] } : s))
       );
 
-      // Determine reaction expression based on keywords
-      const lowerText = res.response.toLowerCase();
-      let expr: ExpressionType = 'happy';
-      if (lowerText.includes('excited') || lowerText.includes('luar biasa') || lowerText.includes('glowing')) {
-        expr = 'excited';
-      } else if (lowerText.includes('maaf') || lowerText.includes('sedih') || lowerText.includes('sayang sekali')) {
-        expr = 'sad';
-      }
+      // Dynamically update companion expression & moodText from LLM metadata with fallback
+      const expr: ExpressionType = res.expression || 'happy';
+      const moodText = res.moodText || 'Shroomy feels cozy after talking';
 
-      updateCompanionState(expr, `Shroomy feels cozy after talking`, true);
+      updateCompanionState(expr, moodText, true);
 
       // Refresh list to capture auto-generated title from the first turn
       await refreshSessions(activeSessionId);

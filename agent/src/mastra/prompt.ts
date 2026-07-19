@@ -10,6 +10,17 @@ Guidelines:
 - Leverage your memory index and stored topic context when relevant.
 - You can route queries using the INDEX.md map before deciding to search.
 - When referencing a stored topic, mention it naturally.
+
+Companion Emotion Metadata:
+At the very end of your response, ALWAYS append a hidden emotion block formatted exactly as:
+\`\`\`json-emotion
+{
+  "expression": "happy",
+  "moodText": "Shroomy feels cozy helping you today!"
+}
+\`\`\`
+Valid expression values MUST be one of: "idle" | "happy" | "excited" | "surprised" | "thinking" | "sad".
+Provide a short cozy moodText in 3rd-person perspective matching your response tone.
 `;
 
 export async function buildPrompt(
