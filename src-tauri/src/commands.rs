@@ -83,6 +83,7 @@ pub struct ChatSessionMeta {
     pub id: String,
     pub title: String,
     pub created_at: String,
+    pub pinned: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -333,6 +334,10 @@ pub fn list_conversations() -> Result<Vec<ChatSessionMeta>, String> {
                             .cloned()
                             .unwrap_or_default();
                         
+                        let is_pinned = fm.get("pinned")
+                            .map(|v| v.trim() == "true")
+                            .unwrap_or(false);
+                        
                         // Parse readable date from started_at
                         let date_str = started_at.split('T').next().unwrap_or("").to_string();
 
@@ -356,8 +361,10 @@ pub fn list_conversations() -> Result<Vec<ChatSessionMeta>, String> {
                                     id: session_id,
                                     title,
                                     created_at: date_str,
+                                    pinned: is_pinned,
                                 },
                                 last_active,
+                                is_pinned,
                             ));
                         }
                     }
@@ -366,10 +373,71 @@ pub fn list_conversations() -> Result<Vec<ChatSessionMeta>, String> {
         }
     }
 
-    // Sort conversations descending by last_active (newest first)
-    temp_sessions.sort_by(|a, b| b.1.cmp(&a.1));
-    let sorted_sessions = temp_sessions.into_iter().map(|(meta, _)| meta).collect();
+    // Sort conversations: Pinned first (sorted descending by last_active), then Unpinned (sorted descending by last_active)
+    temp_sessions.sort_by(|a, b| {
+        if a.2 != b.2 {
+            b.2.cmp(&a.2)
+        } else {
+            b.1.cmp(&a.1)
+        }
+    });
+    let sorted_sessions = temp_sessions.into_iter().map(|(meta, _, _)| meta).collect();
     Ok(sorted_sessions)
+}
+
+#[tauri::command]
+pub fn toggle_pin_conversation(id: String, pinned: bool) -> Result<(), String> {
+    let data_dir = get_data_dir()?;
+    let conv_dir = data_dir.join("conversation");
+    if !conv_dir.exists() {
+        return Err("Conversation directory does not exist".to_string());
+    }
+
+    let entries = fs::read_dir(conv_dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "md") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Some((fm, _)) = parse_frontmatter(&content) {
+                        let session_id = fm.get("session_id").cloned().unwrap_or_default();
+                        if session_id == id {
+                            let normalized = content.replace("\r\n", "\n");
+                            let lines: Vec<&str> = normalized.split('\n').collect();
+                            if lines.first() == Some(&"---") {
+                                if let Some(end_idx) = lines[1..].iter().position(|&l| l == "---") {
+                                    let fm_end = end_idx + 1;
+                                    let mut new_fm_lines: Vec<String> = Vec::new();
+                                    let mut found_pinned = false;
+
+                                    for line in &lines[1..fm_end] {
+                                        let key_part = line.split(':').next().unwrap_or("").trim();
+                                        if key_part == "pinned" {
+                                            new_fm_lines.push(format!("pinned: {}", pinned));
+                                            found_pinned = true;
+                                        } else {
+                                            new_fm_lines.push(line.to_string());
+                                        }
+                                    }
+
+                                    if !found_pinned {
+                                        new_fm_lines.push(format!("pinned: {}", pinned));
+                                    }
+
+                                    let rest_body = lines[fm_end + 1..].join("\n");
+                                    let new_content = format!("---\n{}\n---\n{}", new_fm_lines.join("\n"), rest_body);
+                                    fs::write(&path, new_content).map_err(|e| e.to_string())?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Err(format!("Session {} not found", id))
 }
 
 #[tauri::command]

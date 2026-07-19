@@ -59,6 +59,7 @@ pub fn run() {
       commands::list_conversations,
       commands::read_conversation_file,
       commands::delete_conversation_file,
+      commands::toggle_pin_conversation,
       commands::list_diaries,
       commands::get_memory_items,
       commands::get_available_providers,

@@ -213,6 +213,7 @@ Reason: `linkCoOccurring` terlalu agresif — bikin edge otomatis jika ≥2 topi
 - [x] [#33](https://github.com/dimsedra/pokaico/issues/33) — **Session terbaru di atas sidebar** — Chat history sidebar harus menampilkan session terbaru di posisi paling atas (newest first).
 - [x] [#37](https://github.com/dimsedra/pokaico/issues/37) — **Procedural Sprite Framework & New Shroomy Canvas** — Mengimplementasikan core framework sprite prosedural modular dan mengintegrasikan template Shroomy Canvas 64x64 baru ke RightSidebar.
 - [x] [#39](https://github.com/dimsedra/pokaico/issues/39) — **Deep Integration of Companion Expressions with LLM Responses** — Mengintegrasikan ekspresi companion dan moodText secara dinamis berdasarkan respons LLM menggunakan Pola Hybrid JSON-Suffix-Block dengan fallback anti-crash.
+- [x] [#40](https://github.com/dimsedra/pokaico/issues/40) — **Pin conversation sessions di history sidebar** — Fitur penyematan obrolan penting ke grup PINNED paling atas sidebar dengan persistensi frontmatter `.md`.
 
 ---
 

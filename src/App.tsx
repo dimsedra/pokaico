@@ -90,7 +90,7 @@ export default function App() {
 
   const refreshSessions = async (fallbackIdToSelect?: string) => {
     try {
-      const list = await invoke<{ id: string; title: string; created_at: string }[]>('list_conversations');
+      const list = await invoke<{ id: string; title: string; created_at: string; pinned: boolean }[]>('list_conversations');
       
       setSessions((prev) =>
         list.map((meta) => {
@@ -99,7 +99,8 @@ export default function App() {
             id: meta.id,
             title: meta.title,
             messages: existing ? existing.messages : [],
-            createdAt: meta.created_at
+            createdAt: meta.created_at,
+            pinned: meta.pinned,
           };
         })
       );
@@ -114,7 +115,16 @@ export default function App() {
         setActiveSessionId(null);
       }
     } catch (err) {
-      console.error('Failed to list sessions:', err);
+      console.error('Failed to list conversations:', err);
+    }
+  };
+
+  const handleTogglePinSession = async (sessionId: string, currentPinned: boolean) => {
+    try {
+      await invoke('toggle_pin_conversation', { id: sessionId, pinned: !currentPinned });
+      await refreshSessions(activeSessionId || undefined);
+    } catch (err) {
+      console.error('Failed to toggle pin session:', err);
     }
   };
 
@@ -478,6 +488,7 @@ export default function App() {
         activeSessionId={activeSessionId}
         onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
+        onTogglePinSession={handleTogglePinSession}
         activeView={activeView}
         setActiveView={setActiveView}
       />

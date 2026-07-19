@@ -13,6 +13,7 @@ export interface ChatSession {
   title: string;
   messages: Message[];
   createdAt: string;
+  pinned?: boolean;
 }
 
 export interface MemoryItem {
